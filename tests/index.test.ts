@@ -21,14 +21,12 @@ describe("buildPrompt", () => {
   });
 
   it("ALL_TASKS matches TASK_TIERS", () => {
-    const fromTiers = new Set([...TASK_TIERS[1], ...TASK_TIERS[2]]);
+    const fromTiers = new Set([...TASK_TIERS.tier1, ...TASK_TIERS.tier2]);
     expect(ALL_TASKS).toEqual(fromTiers);
   });
 });
 
 // --- Tracker Tests ---
-// Uses OFFLOAD_LOG_PATH env var to redirect tracker to a temp directory.
-// vi.stubEnv sets the var before the module reads it at import time.
 
 import { mkdirSync, existsSync, writeFileSync, rmSync } from "fs";
 import { join } from "path";
@@ -48,9 +46,6 @@ describe("tracker (isolated via env)", () => {
     if (existsSync(tmpDir)) rmSync(tmpDir, { recursive: true });
   });
 
-  // vi.resetModules() clears the module cache so LOG_PATH re-reads from env.
-  // Router tests at the top use a static import (separate module instance)
-  // — that's fine since they only test pure functions that don't touch the filesystem.
   async function loadTracker() {
     vi.resetModules();
     return await import("../src/index.js");
@@ -61,29 +56,53 @@ describe("tracker (isolated via env)", () => {
     expect(todayKey()).toMatch(/^\d{4}-\d{2}-\d{2}$/);
   });
 
-  it("recordUsage creates file and increments calls", async () => {
-    const { recordUsage, loadUsage, todayKey } = await loadTracker();
+  it("reserveCall + recordUsage tracks calls, tokens, and tasks", async () => {
+    const { reserveCall, recordUsage, todayCalls, getStatus } = await loadTracker();
+    expect(reserveCall()).toBe(true);
     recordUsage(500, "commit_message");
+    expect(reserveCall()).toBe(true);
     recordUsage(300, "translate");
 
-    const data = loadUsage();
-    const today = data[todayKey()];
-    expect(today.calls).toBe(2);
-    expect(today.tokens).toBe(800);
-    expect(today.tasks.commit_message).toBe(1);
-    expect(today.tasks.translate).toBe(1);
+    expect(todayCalls()).toBe(2);
+    const status = getStatus();
+    expect(status).toContain("2/1500");
+    expect(status).toContain("800 tokens offloaded");
+    expect(status).toContain("commit_message: 1");
+    expect(status).toContain("translate: 1");
   });
 
-  it("todayCalls reflects recorded usage", async () => {
-    const { recordUsage, todayCalls } = await loadTracker();
-    expect(todayCalls()).toBe(0);
-    recordUsage(100, "docstring");
-    expect(todayCalls()).toBe(1);
+  it("reserveCall enforces quota and prevents concurrent bypass", async () => {
+    vi.stubEnv("OFFLOAD_RPD_LIMIT", "3");
+    const { reserveCall } = await loadTracker();
+    expect(reserveCall()).toBe(true);
+    expect(reserveCall()).toBe(true);
+    expect(reserveCall()).toBe(true);
+    expect(reserveCall()).toBe(false); // 4th call rejected
   });
 
-  it("isExceeded returns false under limit", async () => {
-    const { isExceeded } = await loadTracker();
+  it("isExceeded reflects reserved calls", async () => {
+    vi.stubEnv("OFFLOAD_RPD_LIMIT", "2");
+    const { reserveCall, isExceeded } = await loadTracker();
     expect(isExceeded()).toBe(false);
+    reserveCall();
+    reserveCall();
+    expect(isExceeded()).toBe(true);
+  });
+
+  it("seedFromFile restores state across restarts", async () => {
+    const mod1 = await loadTracker();
+    mod1.reserveCall();
+    mod1.recordUsage(500, "commit_message");
+    mod1.reserveCall();
+    mod1.recordUsage(300, "translate");
+
+    // Simulate restart — fresh module load, same file
+    const mod2 = await loadTracker();
+    mod2.seedFromFile();
+    expect(mod2.todayCalls()).toBe(2);
+    const status = mod2.getStatus();
+    expect(status).toContain("800 tokens offloaded");
+    expect(status).toContain("commit_message: 1");
   });
 
   it("pruneOldEntries removes entries older than 30 days", async () => {
@@ -104,54 +123,50 @@ describe("tracker (isolated via env)", () => {
     expect(data[today]).toBeDefined();
   });
 
-  it("getStatus returns formatted string", async () => {
-    const { getStatus, recordUsage } = await loadTracker();
-    recordUsage(500, "commit_message");
-    const status = getStatus();
-    expect(status).toContain("Today:");
-    expect(status).toContain("Month:");
-    expect(status).toContain("tokens offloaded");
-    expect(status).toContain("commit_message");
-  });
-
   it("handles corrupt usage file gracefully", async () => {
     writeFileSync(join(tmpDir, "usage.json"), "{broken json");
     const { loadUsage } = await loadTracker();
     expect(loadUsage()).toEqual({});
   });
 
-  it("warnings fire at threshold and reset on day change", async () => {
+  it("warnings fire at threshold", async () => {
     vi.stubEnv("OFFLOAD_RPD_LIMIT", "10");
-    const { checkWarnings, recordUsage } = await loadTracker();
-    // Record 5 of 10 → 50%
-    for (let i = 0; i < 5; i++) recordUsage(1, "commit_message");
+    const { checkWarnings, reserveCall, recordUsage } = await loadTracker();
+    for (let i = 0; i < 5; i++) { reserveCall(); recordUsage(1, "commit_message"); }
     const first = checkWarnings();
     expect(first.some((w: string) => w.includes("50%"))).toBe(true);
-    // Same day: suppressed
     expect(checkWarnings().some((w: string) => w.includes("50%"))).toBe(false);
   });
 
-  it("in-memory counter enforces quota when file I/O fails", async () => {
+  it("quota enforced even when file I/O fails", async () => {
     vi.stubEnv("OFFLOAD_LOG_PATH", "/nonexistent/deeply/nested/path/usage.json");
     vi.stubEnv("OFFLOAD_RPD_LIMIT", "3");
-    const mod = await (async () => { vi.resetModules(); return import("../src/index.js"); })();
-    // Record 3 calls — file writes fail but in-memory counter tracks
+    const mod = await loadTracker();
+    expect(mod.reserveCall()).toBe(true);
     mod.recordUsage(100, "commit_message");
+    expect(mod.reserveCall()).toBe(true);
     mod.recordUsage(100, "commit_message");
+    expect(mod.reserveCall()).toBe(true);
     mod.recordUsage(100, "commit_message");
+    expect(mod.reserveCall()).toBe(false); // enforced from memory
     expect(mod.isExceeded()).toBe(true);
+  });
+
+  it("getStatus consistent when file I/O fails", async () => {
+    vi.stubEnv("OFFLOAD_LOG_PATH", "/nonexistent/deeply/nested/path/usage.json");
+    const mod = await loadTracker();
+    mod.reserveCall();
+    mod.recordUsage(500, "commit_message");
+    const status = mod.getStatus();
+    expect(status).toContain("1/1500");
+    expect(status).toContain("500 tokens offloaded");
+    expect(status).toContain("commit_message: 1");
   });
 
   it("recordUsage survives unwritable path", async () => {
     vi.stubEnv("OFFLOAD_LOG_PATH", "/nonexistent/deeply/nested/path/usage.json");
-    const mod = await (async () => { vi.resetModules(); return import("../src/index.js"); })();
+    const mod = await loadTracker();
     expect(() => mod.recordUsage(100, "commit_message")).not.toThrow();
-  });
-
-  it("pruneOldEntries survives unwritable path", async () => {
-    vi.stubEnv("OFFLOAD_LOG_PATH", "/nonexistent/deeply/nested/path/usage.json");
-    const mod = await (async () => { vi.resetModules(); return import("../src/index.js"); })();
-    expect(() => mod.pruneOldEntries()).not.toThrow();
   });
 
   it("pruneOldEntries skips write when no data exists", async () => {

@@ -2,7 +2,7 @@
 
 **Offload routine AI coding tasks to free LLM APIs**
 
-Works with Claude Code, Cursor, Windsurf, Cline, and Codex. Adds two MCP tools that route low-value tasks (commit messages, docstrings, translations) to Gemma 4 via Google AI Studio's free tier — keeping your primary AI's context clean.
+Works with Claude Code, Cursor, Windsurf, Cline, and Codex. Adds two MCP tools that route low-value tasks (commit messages, docstrings, translations) to Gemma via Google AI Studio's free tier — keeping your primary AI's context clean.
 
 ---
 
@@ -55,7 +55,7 @@ Copy `rules/claude.md` into your project's `.claude/` directory (or equivalent).
 
 ### `offload`
 
-Routes a task to Gemma 4 and returns the result.
+Routes a task to Gemma and returns the result.
 
 | Parameter | Type | Description |
 |-----------|------|-------------|
@@ -105,7 +105,7 @@ No parameters. Returns daily and monthly usage stats.
 | Env var | Default | Description |
 |---------|---------|-------------|
 | `GOOGLE_AI_API_KEY` | — | **Required.** Free key from [aistudio.google.com/apikey](https://aistudio.google.com/apikey) |
-| `OFFLOAD_MODEL` | `gemma-4-31b-it` | Model to use via Google GenAI API |
+| `OFFLOAD_MODEL` | `gemma-3-27b-it` | Model to use via Google GenAI API |
 | `OFFLOAD_RPD_LIMIT` | `1500` | Daily request limit (requests per day) |
 | `OFFLOAD_LOG_PATH` | `~/.offload-mcp/usage.json` | Path for usage tracking data |
 
@@ -135,7 +135,7 @@ Tasks today:
 ```
 Your AI assistant
   → calls offload(task, content)
-    → Gemma 4 API (Google AI Studio free tier)
+    → Gemma API (Google AI Studio free tier)
       → result returned to your AI assistant
 ```
 

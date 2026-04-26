@@ -12,7 +12,7 @@ import { fileURLToPath } from "url";
 // --- Config ---
 
 const API_KEY = process.env.GOOGLE_AI_API_KEY ?? "";
-const MODEL = process.env.OFFLOAD_MODEL ?? "gemma-4-31b-it";
+const MODEL = process.env.OFFLOAD_MODEL ?? "gemma-3-27b-it";
 const RPD_LIMIT = (() => {
   const raw = parseInt(process.env.OFFLOAD_RPD_LIMIT ?? "1500", 10);
   return Number.isFinite(raw) && raw > 0 ? raw : 1500;
@@ -21,8 +21,8 @@ const LOG_PATH = process.env.OFFLOAD_LOG_PATH ?? join(homedir(), ".offload-mcp",
 
 // --- Task Router ---
 
-const TASK_TIERS: Record<number, Set<string>> = {
-  1: new Set([
+const TASK_TIERS: Record<string, Set<string>> = {
+  tier1: new Set([
     "commit_message",
     "pr_description",
     "code_summary",
@@ -30,7 +30,7 @@ const TASK_TIERS: Record<number, Set<string>> = {
     "changelog_entry",
     "naming_suggestion",
   ]),
-  2: new Set([
+  tier2: new Set([
     "classify",
     "extract_data",
     "code_review_single",
@@ -39,7 +39,7 @@ const TASK_TIERS: Record<number, Set<string>> = {
   ]),
 };
 
-const ALL_TASKS = new Set([...TASK_TIERS[1], ...TASK_TIERS[2]]);
+const ALL_TASKS = new Set([...TASK_TIERS.tier1, ...TASK_TIERS.tier2]);
 
 const PROMPTS: Record<string, string> = {
   commit_message:
@@ -127,8 +127,8 @@ async function callGemma(prompt: string): Promise<OffloadResponse> {
 }
 
 // --- Quota Tracker ---
-// Single JSON file, daily buckets, 30-day retention.
-// In-memory counter is the authority for quota enforcement — file is best-effort persistence.
+// In-memory DayBucket is the single authority for quota enforcement.
+// File is best-effort persistence, seeded into memory on startup.
 // Format: { "2026-04-26": { "calls": 47, "tokens": 28500, "tasks": { "commit_message": 18 } } }
 
 interface DayBucket {
@@ -139,13 +139,21 @@ interface DayBucket {
 
 type UsageData = Record<string, DayBucket>;
 
-let memCalls = 0;
+let mem: DayBucket = { calls: 0, tokens: 0, tasks: {} };
 let memDay = "";
 let warnedThresholds = new Set<number>();
 let warnedDay = "";
 
 function todayKey(): string {
   return new Date().toISOString().slice(0, 10);
+}
+
+function ensureMemDay(): void {
+  const today = todayKey();
+  if (memDay !== today) {
+    mem = { calls: 0, tokens: 0, tasks: {} };
+    memDay = today;
+  }
 }
 
 function resetWarningsIfNewDay(): void {
@@ -173,36 +181,41 @@ function saveUsage(data: UsageData): void {
     mkdirSync(dir, { recursive: true });
     const tmp = LOG_PATH + ".tmp";
     writeFileSync(tmp, JSON.stringify(data));
-    renameSync(tmp, LOG_PATH); // atomic on POSIX
+    renameSync(tmp, LOG_PATH);
   } catch {
-    // Best-effort: tracking failure should not crash the server
+    // Best-effort persistence
   }
 }
 
-function recordUsage(tokens: number, task: string): void {
-  // In-memory counter always increments — survives I/O failures
-  const today = todayKey();
-  if (memDay !== today) { memCalls = 0; memDay = today; }
-  memCalls++;
-
+function syncToFile(): void {
   try {
     const data = loadUsage();
-    const key = todayKey();
-    if (!data[key]) data[key] = { calls: 0, tokens: 0, tasks: {} };
-    data[key].calls++;
-    data[key].tokens += tokens;
-    data[key].tasks[task] = (data[key].tasks[task] ?? 0) + 1;
+    data[memDay] = { ...mem, tasks: { ...mem.tasks } };
     saveUsage(data);
   } catch {
-    // Best-effort: file persistence failure doesn't affect quota enforcement
+    // Best-effort persistence
   }
+}
+
+// Reserve a call slot before the API request. Returns false if quota exceeded.
+function reserveCall(): boolean {
+  ensureMemDay();
+  if (mem.calls >= RPD_LIMIT) return false;
+  mem.calls++;
+  return true;
+}
+
+// Record tokens and task after a successful API call.
+function recordUsage(tokens: number, task: string): void {
+  ensureMemDay();
+  mem.tokens += tokens;
+  mem.tasks[task] = (mem.tasks[task] ?? 0) + 1;
+  syncToFile();
 }
 
 function todayCalls(): number {
-  const today = todayKey();
-  if (memDay !== today) { memCalls = 0; memDay = today; }
-  const fileCalls = loadUsage()[today]?.calls ?? 0;
-  return Math.max(memCalls, fileCalls);
+  ensureMemDay();
+  return mem.calls;
 }
 
 function isExceeded(): boolean {
@@ -236,36 +249,50 @@ function pruneOldEntries(): void {
     }
     saveUsage(pruned);
   } catch {
-    // Best-effort: pruning failure should not prevent server startup
+    // Best-effort
+  }
+}
+
+// Seed in-memory state from file on startup
+function seedFromFile(): void {
+  const data = loadUsage();
+  const today = todayKey();
+  const bucket = data[today];
+  if (bucket) {
+    mem = { calls: bucket.calls, tokens: bucket.tokens, tasks: { ...bucket.tasks } };
+    memDay = today;
   }
 }
 
 function getStatus(): string {
-  const data = loadUsage();
-  const key = todayKey();
-  const today = data[key] ?? { calls: 0, tokens: 0, tasks: {} };
-  const calls = todayCalls();
-  const pct = RPD_LIMIT > 0 ? ((calls / RPD_LIMIT) * 100).toFixed(1) : "0";
+  ensureMemDay();
+  const pct = RPD_LIMIT > 0 ? ((mem.calls / RPD_LIMIT) * 100).toFixed(1) : "0";
 
-  const monthPrefix = key.slice(0, 7);
+  // Monthly aggregate from file + merge current day from memory
+  const data = loadUsage();
+  const monthPrefix = memDay.slice(0, 7);
   let mCalls = 0,
     mTokens = 0,
     mDays = 0;
   for (const [k, v] of Object.entries(data)) {
-    if (k.startsWith(monthPrefix)) {
+    if (k.startsWith(monthPrefix) && k !== memDay) {
       mCalls += v.calls;
       mTokens += v.tokens;
       mDays++;
     }
   }
+  // Add current day from memory (authoritative)
+  mCalls += mem.calls;
+  mTokens += mem.tokens;
+  if (mem.calls > 0) mDays++;
   const avgPerDay = mDays > 0 ? Math.round(mCalls / mDays) : 0;
 
   const lines = [
-    `Today: ${calls}/${RPD_LIMIT} calls (${pct}%), ${today.tokens.toLocaleString()} tokens offloaded`,
+    `Today: ${mem.calls}/${RPD_LIMIT} calls (${pct}%), ${mem.tokens.toLocaleString()} tokens offloaded`,
     `Month: ${mCalls} calls over ${mDays} days (avg ${avgPerDay}/day), ${mTokens.toLocaleString()} tokens offloaded`,
   ];
 
-  const tasks = Object.entries(today.tasks).sort((a, b) => b[1] - a[1]);
+  const tasks = Object.entries(mem.tasks).sort((a, b) => b[1] - a[1]);
   if (tasks.length > 0) {
     lines.push("Tasks today:");
     for (const [name, count] of tasks) {
@@ -284,7 +311,7 @@ const server = new McpServer({
 
 server.tool(
   "offload",
-  "Offload a routine task to a free LLM API (Gemma 4). " +
+  "Offload a routine task to a free LLM API (Gemma). " +
     "Use for: commit messages, PR descriptions, code summaries, translations, " +
     "changelog entries, naming suggestions, classification, data extraction, " +
     "single-function code review, docstrings, email subject lines.",
@@ -306,7 +333,9 @@ server.tool(
       };
     }
 
-    if (isExceeded()) {
+    // Reserve a call slot synchronously before the async API call.
+    // This prevents concurrent requests from both passing the quota check.
+    if (!reserveCall()) {
       return {
         content: [{ type: "text" as const, text: `[QUOTA] Daily limit reached (${RPD_LIMIT} calls). Handle locally.` }],
       };
@@ -356,12 +385,12 @@ async function main() {
       "WARNING: GOOGLE_AI_API_KEY not set. Get a free key at https://aistudio.google.com/apikey"
     );
   }
+  seedFromFile();
   pruneOldEntries();
   const transport = new StdioServerTransport();
   await server.connect(transport);
 }
 
-// Resolve symlinks so npx/npm bin invocations match
 const isDirectRun = (() => {
   try {
     return realpathSync(process.argv[1]) === realpathSync(fileURLToPath(import.meta.url));
@@ -379,6 +408,7 @@ if (isDirectRun) {
 
 export {
   buildPrompt, ALL_TASKS, TASK_TIERS,
-  recordUsage, loadUsage, saveUsage, todayKey, todayCalls,
+  reserveCall, recordUsage, loadUsage, saveUsage, syncToFile,
+  seedFromFile, todayKey, todayCalls,
   isExceeded, checkWarnings, resetWarningsIfNewDay, pruneOldEntries, getStatus,
 };
