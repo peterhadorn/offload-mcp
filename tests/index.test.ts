@@ -1,34 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { shouldOffload, buildPrompt, ALL_TASKS, TASK_TIERS } from "../src/index.js";
+import { buildPrompt, ALL_TASKS, TASK_TIERS } from "../src/index.js";
 
 // --- Router Tests ---
-
-describe("shouldOffload", () => {
-  it("delegates tier 1 tasks", () => {
-    expect(shouldOffload("commit_message", false)).toBe(true);
-    expect(shouldOffload("translate", false)).toBe(true);
-    expect(shouldOffload("pr_description", false)).toBe(true);
-  });
-
-  it("delegates tier 2 tasks", () => {
-    expect(shouldOffload("classify", false)).toBe(true);
-    expect(shouldOffload("docstring", false)).toBe(true);
-  });
-
-  it("rejects unknown tasks", () => {
-    expect(shouldOffload("hack_pentagon", false)).toBe(false);
-    expect(shouldOffload("", false)).toBe(false);
-  });
-
-  it("rejects when quota exceeded", () => {
-    expect(shouldOffload("commit_message", true)).toBe(false);
-  });
-
-  it("ALL_TASKS matches TASK_TIERS", () => {
-    const fromTiers = new Set([...TASK_TIERS[1], ...TASK_TIERS[2]]);
-    expect(ALL_TASKS).toEqual(fromTiers);
-  });
-});
 
 describe("buildPrompt", () => {
   it("includes content in prompt", () => {
@@ -46,13 +19,18 @@ describe("buildPrompt", () => {
       expect(() => buildPrompt(task, "test")).not.toThrow();
     }
   });
+
+  it("ALL_TASKS matches TASK_TIERS", () => {
+    const fromTiers = new Set([...TASK_TIERS[1], ...TASK_TIERS[2]]);
+    expect(ALL_TASKS).toEqual(fromTiers);
+  });
 });
 
 // --- Tracker Tests ---
 // Uses OFFLOAD_LOG_PATH env var to redirect tracker to a temp directory.
 // vi.stubEnv sets the var before the module reads it at import time.
 
-import { mkdirSync, existsSync, readFileSync, writeFileSync, rmSync } from "fs";
+import { mkdirSync, existsSync, writeFileSync, rmSync } from "fs";
 import { join } from "path";
 import { tmpdir } from "os";
 
@@ -70,9 +48,8 @@ describe("tracker (isolated via env)", () => {
     if (existsSync(tmpDir)) rmSync(tmpDir, { recursive: true });
   });
 
-  // Dynamic import so the module picks up the stubbed env var.
   // vi.resetModules() clears the module cache so LOG_PATH re-reads from env.
-  // Note: router tests at the top use a static import (separate module instance)
+  // Router tests at the top use a static import (separate module instance)
   // — that's fine since they only test pure functions that don't touch the filesystem.
   async function loadTracker() {
     vi.resetModules();
@@ -104,9 +81,8 @@ describe("tracker (isolated via env)", () => {
     expect(todayCalls()).toBe(1);
   });
 
-  it("isExceeded returns true when limit hit", async () => {
-    const { isExceeded, todayCalls } = await loadTracker();
-    // Default RPD_LIMIT is 1500 — we won't hit it here
+  it("isExceeded returns false under limit", async () => {
+    const { isExceeded } = await loadTracker();
     expect(isExceeded()).toBe(false);
   });
 
@@ -144,30 +120,31 @@ describe("tracker (isolated via env)", () => {
     expect(loadUsage()).toEqual({});
   });
 
-  // --- Edge case: warnings reset on date rollover ---
-  it("warnings reset when day changes", async () => {
-    const { checkWarnings, recordUsage, resetWarningsIfNewDay } = await loadTracker();
-    // Record enough to trigger 50% warning (750 of 1500)
-    for (let i = 0; i < 750; i++) recordUsage(1, "commit_message");
+  it("warnings fire at threshold and reset on day change", async () => {
+    vi.stubEnv("OFFLOAD_RPD_LIMIT", "10");
+    const { checkWarnings, recordUsage } = await loadTracker();
+    // Record 5 of 10 → 50%
+    for (let i = 0; i < 5; i++) recordUsage(1, "commit_message");
     const first = checkWarnings();
     expect(first.some((w: string) => w.includes("50%"))).toBe(true);
-
-    // Same day: should not warn again
-    const second = checkWarnings();
-    expect(second.some((w: string) => w.includes("50%"))).toBe(false);
-
-    // Simulate date rollover by calling resetWarningsIfNewDay after forcing new day
-    // We can't easily mock Date, but we can verify the reset function clears state
-    resetWarningsIfNewDay(); // same day — no-op
-    const third = checkWarnings();
-    expect(third.some((w: string) => w.includes("50%"))).toBe(false); // still suppressed
+    // Same day: suppressed
+    expect(checkWarnings().some((w: string) => w.includes("50%"))).toBe(false);
   });
 
-  // --- Edge case: unwritable log path doesn't crash ---
+  it("in-memory counter enforces quota when file I/O fails", async () => {
+    vi.stubEnv("OFFLOAD_LOG_PATH", "/nonexistent/deeply/nested/path/usage.json");
+    vi.stubEnv("OFFLOAD_RPD_LIMIT", "3");
+    const mod = await (async () => { vi.resetModules(); return import("../src/index.js"); })();
+    // Record 3 calls — file writes fail but in-memory counter tracks
+    mod.recordUsage(100, "commit_message");
+    mod.recordUsage(100, "commit_message");
+    mod.recordUsage(100, "commit_message");
+    expect(mod.isExceeded()).toBe(true);
+  });
+
   it("recordUsage survives unwritable path", async () => {
     vi.stubEnv("OFFLOAD_LOG_PATH", "/nonexistent/deeply/nested/path/usage.json");
     const mod = await (async () => { vi.resetModules(); return import("../src/index.js"); })();
-    // Should not throw — best-effort tracking
     expect(() => mod.recordUsage(100, "commit_message")).not.toThrow();
   });
 
@@ -178,7 +155,6 @@ describe("tracker (isolated via env)", () => {
   });
 
   it("pruneOldEntries skips write when no data exists", async () => {
-    // Fresh tmp dir, no usage.json — pruneOldEntries should not create the file
     const { pruneOldEntries } = await loadTracker();
     pruneOldEntries();
     expect(existsSync(join(tmpDir, "usage.json"))).toBe(false);

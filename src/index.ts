@@ -4,7 +4,7 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
 import { GoogleGenAI } from "@google/genai";
-import { readFileSync, writeFileSync, mkdirSync, existsSync, renameSync } from "fs";
+import { readFileSync, writeFileSync, mkdirSync, existsSync, renameSync, realpathSync } from "fs";
 import { homedir } from "os";
 import { join, dirname } from "path";
 import { fileURLToPath } from "url";
@@ -13,8 +13,10 @@ import { fileURLToPath } from "url";
 
 const API_KEY = process.env.GOOGLE_AI_API_KEY ?? "";
 const MODEL = process.env.OFFLOAD_MODEL ?? "gemma-4-31b-it";
-const RPD_LIMIT_RAW = parseInt(process.env.OFFLOAD_RPD_LIMIT ?? "1500", 10);
-const RPD_LIMIT = Number.isFinite(RPD_LIMIT_RAW) && RPD_LIMIT_RAW > 0 ? RPD_LIMIT_RAW : 1500;
+const RPD_LIMIT = (() => {
+  const raw = parseInt(process.env.OFFLOAD_RPD_LIMIT ?? "1500", 10);
+  return Number.isFinite(raw) && raw > 0 ? raw : 1500;
+})();
 const LOG_PATH = process.env.OFFLOAD_LOG_PATH ?? join(homedir(), ".offload-mcp", "usage.json");
 
 // --- Task Router ---
@@ -76,11 +78,6 @@ const PROMPTS: Record<string, string> = {
     "Under 60 chars each. Vary: question, benefit, urgency, curiosity.",
 };
 
-function shouldOffload(task: string, quotaExceeded: boolean): boolean {
-  if (!task || quotaExceeded) return false;
-  return ALL_TASKS.has(task);
-}
-
 function buildPrompt(task: string, content: string): string {
   const system = PROMPTS[task];
   if (!system) throw new Error(`Unknown task: ${task}`);
@@ -89,12 +86,15 @@ function buildPrompt(task: string, content: string): string {
 
 // --- Gemma Client ---
 
-// Client created once at module scope — avoids re-init on every call
 const genaiClient = API_KEY ? new GoogleGenAI({ apiKey: API_KEY }) : null;
 
 interface OffloadResponse {
   text: string;
   totalTokens: number;
+}
+
+function isRateLimited(err: any): boolean {
+  return err?.status === 429 || err?.code === 429 || err?.httpStatusCode === 429;
 }
 
 async function callGemma(prompt: string): Promise<OffloadResponse> {
@@ -116,7 +116,7 @@ async function callGemma(prompt: string): Promise<OffloadResponse> {
         totalTokens: response.usageMetadata?.totalTokenCount ?? 0,
       };
     } catch (err: any) {
-      if (err?.status === 429 && attempt < maxRetries - 1) {
+      if (isRateLimited(err) && attempt < maxRetries - 1) {
         await new Promise((r) => setTimeout(r, 2000 * 2 ** attempt));
         continue;
       }
@@ -128,6 +128,7 @@ async function callGemma(prompt: string): Promise<OffloadResponse> {
 
 // --- Quota Tracker ---
 // Single JSON file, daily buckets, 30-day retention.
+// In-memory counter is the authority for quota enforcement — file is best-effort persistence.
 // Format: { "2026-04-26": { "calls": 47, "tokens": 28500, "tasks": { "commit_message": 18 } } }
 
 interface DayBucket {
@@ -138,6 +139,8 @@ interface DayBucket {
 
 type UsageData = Record<string, DayBucket>;
 
+let memCalls = 0;
+let memDay = "";
 let warnedThresholds = new Set<number>();
 let warnedDay = "";
 
@@ -177,6 +180,11 @@ function saveUsage(data: UsageData): void {
 }
 
 function recordUsage(tokens: number, task: string): void {
+  // In-memory counter always increments — survives I/O failures
+  const today = todayKey();
+  if (memDay !== today) { memCalls = 0; memDay = today; }
+  memCalls++;
+
   try {
     const data = loadUsage();
     const key = todayKey();
@@ -186,12 +194,15 @@ function recordUsage(tokens: number, task: string): void {
     data[key].tasks[task] = (data[key].tasks[task] ?? 0) + 1;
     saveUsage(data);
   } catch {
-    // Best-effort: tracking failure should not crash the server
+    // Best-effort: file persistence failure doesn't affect quota enforcement
   }
 }
 
 function todayCalls(): number {
-  return loadUsage()[todayKey()]?.calls ?? 0;
+  const today = todayKey();
+  if (memDay !== today) { memCalls = 0; memDay = today; }
+  const fileCalls = loadUsage()[today]?.calls ?? 0;
+  return Math.max(memCalls, fileCalls);
 }
 
 function isExceeded(): boolean {
@@ -215,7 +226,7 @@ function checkWarnings(): string[] {
 function pruneOldEntries(): void {
   try {
     const data = loadUsage();
-    if (Object.keys(data).length === 0) return; // nothing to prune, skip write
+    if (Object.keys(data).length === 0) return;
     const cutoff = new Date();
     cutoff.setDate(cutoff.getDate() - 30);
     const cutoffKey = cutoff.toISOString().slice(0, 10);
@@ -233,9 +244,9 @@ function getStatus(): string {
   const data = loadUsage();
   const key = todayKey();
   const today = data[key] ?? { calls: 0, tokens: 0, tasks: {} };
-  const pct = RPD_LIMIT > 0 ? ((today.calls / RPD_LIMIT) * 100).toFixed(1) : "0";
+  const calls = todayCalls();
+  const pct = RPD_LIMIT > 0 ? ((calls / RPD_LIMIT) * 100).toFixed(1) : "0";
 
-  // Monthly aggregate
   const monthPrefix = key.slice(0, 7);
   let mCalls = 0,
     mTokens = 0,
@@ -250,7 +261,7 @@ function getStatus(): string {
   const avgPerDay = mDays > 0 ? Math.round(mCalls / mDays) : 0;
 
   const lines = [
-    `Today: ${today.calls}/${RPD_LIMIT} calls (${pct}%), ${today.tokens.toLocaleString()} tokens offloaded`,
+    `Today: ${calls}/${RPD_LIMIT} calls (${pct}%), ${today.tokens.toLocaleString()} tokens offloaded`,
     `Month: ${mCalls} calls over ${mDays} days (avg ${avgPerDay}/day), ${mTokens.toLocaleString()} tokens offloaded`,
   ];
 
@@ -315,7 +326,6 @@ server.tool(
 
       return { content: [{ type: "text" as const, text }] };
     } catch (err: any) {
-      // Sanitize error to prevent API key leakage
       const msg = (err?.message ?? String(err)).replace(/key=[^&\s]+/gi, "key=REDACTED");
       return {
         content: [
@@ -351,8 +361,15 @@ async function main() {
   await server.connect(transport);
 }
 
-// Only run when executed directly (not imported by tests)
-const isDirectRun = process.argv[1] === fileURLToPath(import.meta.url);
+// Resolve symlinks so npx/npm bin invocations match
+const isDirectRun = (() => {
+  try {
+    return realpathSync(process.argv[1]) === realpathSync(fileURLToPath(import.meta.url));
+  } catch {
+    return false;
+  }
+})();
+
 if (isDirectRun) {
   main().catch((err) => {
     console.error("Fatal:", err);
@@ -360,9 +377,8 @@ if (isDirectRun) {
   });
 }
 
-// Export pure functions for testing
 export {
-  shouldOffload, buildPrompt, ALL_TASKS, TASK_TIERS,
+  buildPrompt, ALL_TASKS, TASK_TIERS,
   recordUsage, loadUsage, saveUsage, todayKey, todayCalls,
   isExceeded, checkWarnings, resetWarningsIfNewDay, pruneOldEntries, getStatus,
 };

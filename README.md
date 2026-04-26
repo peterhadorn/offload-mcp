@@ -154,7 +154,6 @@ Local Ollama requires a GPU, significant RAM, and setup time. Free APIs work on 
 **v0.2**
 - Multiple providers: Groq, Mistral, Ollama (optional local fallback)
 - Per-task provider routing
-- Token cost estimation display
 
 ---
 
