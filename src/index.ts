@@ -21,25 +21,19 @@ const LOG_PATH = process.env.OFFLOAD_LOG_PATH ?? join(homedir(), ".offload-mcp",
 
 // --- Task Router ---
 
-const TASK_TIERS: Record<string, Set<string>> = {
-  tier1: new Set([
-    "commit_message",
-    "pr_description",
-    "code_summary",
-    "translate",
-    "changelog_entry",
-    "naming_suggestion",
-  ]),
-  tier2: new Set([
-    "classify",
-    "extract_data",
-    "code_review_single",
-    "docstring",
-    "subject_lines",
-  ]),
-};
-
-const ALL_TASKS = new Set([...TASK_TIERS.tier1, ...TASK_TIERS.tier2]);
+const ALL_TASKS = new Set([
+  "commit_message",
+  "pr_description",
+  "code_summary",
+  "translate",
+  "changelog_entry",
+  "naming_suggestion",
+  "classify",
+  "extract_data",
+  "code_review_single",
+  "docstring",
+  "subject_lines",
+]);
 
 const PROMPTS: Record<string, string> = {
   commit_message:
@@ -216,10 +210,6 @@ function recordUsage(tokens: number, task: string): void {
 function todayCalls(): number {
   ensureMemDay();
   return mem.calls;
-}
-
-function isExceeded(): boolean {
-  return todayCalls() >= RPD_LIMIT;
 }
 
 function checkWarnings(): string[] {
@@ -407,8 +397,8 @@ if (isDirectRun) {
 }
 
 export {
-  buildPrompt, ALL_TASKS, TASK_TIERS,
-  reserveCall, recordUsage, loadUsage, saveUsage, syncToFile,
+  buildPrompt, ALL_TASKS,
+  reserveCall, recordUsage, loadUsage, saveUsage,
   seedFromFile, todayKey, todayCalls,
-  isExceeded, checkWarnings, resetWarningsIfNewDay, pruneOldEntries, getStatus,
+  checkWarnings, pruneOldEntries, getStatus,
 };

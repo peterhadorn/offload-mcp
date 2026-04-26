@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { buildPrompt, ALL_TASKS, TASK_TIERS } from "../src/index.js";
+import { buildPrompt, ALL_TASKS } from "../src/index.js";
 
 // --- Router Tests ---
 
@@ -20,9 +20,8 @@ describe("buildPrompt", () => {
     }
   });
 
-  it("ALL_TASKS matches TASK_TIERS", () => {
-    const fromTiers = new Set([...TASK_TIERS.tier1, ...TASK_TIERS.tier2]);
-    expect(ALL_TASKS).toEqual(fromTiers);
+  it("ALL_TASKS has 11 task types", () => {
+    expect(ALL_TASKS.size).toBe(11);
   });
 });
 
@@ -78,15 +77,6 @@ describe("tracker (isolated via env)", () => {
     expect(reserveCall()).toBe(true);
     expect(reserveCall()).toBe(true);
     expect(reserveCall()).toBe(false); // 4th call rejected
-  });
-
-  it("isExceeded reflects reserved calls", async () => {
-    vi.stubEnv("OFFLOAD_RPD_LIMIT", "2");
-    const { reserveCall, isExceeded } = await loadTracker();
-    expect(isExceeded()).toBe(false);
-    reserveCall();
-    reserveCall();
-    expect(isExceeded()).toBe(true);
   });
 
   it("seedFromFile restores state across restarts", async () => {
@@ -149,7 +139,6 @@ describe("tracker (isolated via env)", () => {
     expect(mod.reserveCall()).toBe(true);
     mod.recordUsage(100, "commit_message");
     expect(mod.reserveCall()).toBe(false); // enforced from memory
-    expect(mod.isExceeded()).toBe(true);
   });
 
   it("getStatus consistent when file I/O fails", async () => {
