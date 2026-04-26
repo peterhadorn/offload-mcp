@@ -13,7 +13,8 @@ import { fileURLToPath } from "url";
 
 const API_KEY = process.env.GOOGLE_AI_API_KEY ?? "";
 const MODEL = process.env.OFFLOAD_MODEL ?? "gemma-4-31b-it";
-const RPD_LIMIT = parseInt(process.env.OFFLOAD_RPD_LIMIT ?? "1500", 10);
+const RPD_LIMIT_RAW = parseInt(process.env.OFFLOAD_RPD_LIMIT ?? "1500", 10);
+const RPD_LIMIT = Number.isFinite(RPD_LIMIT_RAW) && RPD_LIMIT_RAW > 0 ? RPD_LIMIT_RAW : 1500;
 const LOG_PATH = process.env.OFFLOAD_LOG_PATH ?? join(homedir(), ".offload-mcp", "usage.json");
 
 // --- Task Router ---
@@ -137,10 +138,19 @@ interface DayBucket {
 
 type UsageData = Record<string, DayBucket>;
 
-const warnedThresholds = new Set<number>();
+let warnedThresholds = new Set<number>();
+let warnedDay = "";
 
 function todayKey(): string {
   return new Date().toISOString().slice(0, 10);
+}
+
+function resetWarningsIfNewDay(): void {
+  const today = todayKey();
+  if (warnedDay !== today) {
+    warnedThresholds = new Set();
+    warnedDay = today;
+  }
 }
 
 function loadUsage(): UsageData {
@@ -155,21 +165,29 @@ function loadUsage(): UsageData {
 }
 
 function saveUsage(data: UsageData): void {
-  const dir = dirname(LOG_PATH);
-  mkdirSync(dir, { recursive: true });
-  const tmp = LOG_PATH + ".tmp";
-  writeFileSync(tmp, JSON.stringify(data));
-  renameSync(tmp, LOG_PATH); // atomic on POSIX
+  try {
+    const dir = dirname(LOG_PATH);
+    mkdirSync(dir, { recursive: true });
+    const tmp = LOG_PATH + ".tmp";
+    writeFileSync(tmp, JSON.stringify(data));
+    renameSync(tmp, LOG_PATH); // atomic on POSIX
+  } catch {
+    // Best-effort: tracking failure should not crash the server
+  }
 }
 
 function recordUsage(tokens: number, task: string): void {
-  const data = loadUsage();
-  const key = todayKey();
-  if (!data[key]) data[key] = { calls: 0, tokens: 0, tasks: {} };
-  data[key].calls++;
-  data[key].tokens += tokens;
-  data[key].tasks[task] = (data[key].tasks[task] ?? 0) + 1;
-  saveUsage(data);
+  try {
+    const data = loadUsage();
+    const key = todayKey();
+    if (!data[key]) data[key] = { calls: 0, tokens: 0, tasks: {} };
+    data[key].calls++;
+    data[key].tokens += tokens;
+    data[key].tasks[task] = (data[key].tasks[task] ?? 0) + 1;
+    saveUsage(data);
+  } catch {
+    // Best-effort: tracking failure should not crash the server
+  }
 }
 
 function todayCalls(): number {
@@ -181,6 +199,7 @@ function isExceeded(): boolean {
 }
 
 function checkWarnings(): string[] {
+  resetWarningsIfNewDay();
   const calls = todayCalls();
   const ratio = RPD_LIMIT > 0 ? calls / RPD_LIMIT : 0;
   const warnings: string[] = [];
@@ -194,15 +213,20 @@ function checkWarnings(): string[] {
 }
 
 function pruneOldEntries(): void {
-  const data = loadUsage();
-  const cutoff = new Date();
-  cutoff.setDate(cutoff.getDate() - 30);
-  const cutoffKey = cutoff.toISOString().slice(0, 10);
-  const pruned: UsageData = {};
-  for (const [key, val] of Object.entries(data)) {
-    if (key >= cutoffKey) pruned[key] = val;
+  try {
+    const data = loadUsage();
+    if (Object.keys(data).length === 0) return; // nothing to prune, skip write
+    const cutoff = new Date();
+    cutoff.setDate(cutoff.getDate() - 30);
+    const cutoffKey = cutoff.toISOString().slice(0, 10);
+    const pruned: UsageData = {};
+    for (const [key, val] of Object.entries(data)) {
+      if (key >= cutoffKey) pruned[key] = val;
+    }
+    saveUsage(pruned);
+  } catch {
+    // Best-effort: pruning failure should not prevent server startup
   }
-  saveUsage(pruned);
 }
 
 function getStatus(): string {
@@ -340,5 +364,5 @@ if (isDirectRun) {
 export {
   shouldOffload, buildPrompt, ALL_TASKS, TASK_TIERS,
   recordUsage, loadUsage, saveUsage, todayKey, todayCalls,
-  isExceeded, checkWarnings, pruneOldEntries, getStatus,
+  isExceeded, checkWarnings, resetWarningsIfNewDay, pruneOldEntries, getStatus,
 };
