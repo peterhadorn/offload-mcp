@@ -63,8 +63,9 @@ Routes a task to Gemma and returns the result.
 
 | Parameter | Type | Description |
 |-----------|------|-------------|
-| `task` | enum (see below) | Task type to offload |
+| `task` | enum (see below) | Task type to offload. Use `freeform` for unlisted tasks. |
 | `content` | string | Content to process (diff, code, text, etc.) |
+| `prompt` | string (optional) | Custom instruction. Required when `task="freeform"`. |
 
 ### `offload_status`
 
@@ -94,6 +95,14 @@ No parameters. Returns daily and monthly usage stats.
 | `code_review_single` | Reviews a single function for bugs and improvements |
 | `docstring` | Writes a docstring (summary, params, returns, throws) |
 | `subject_lines` | Generates 5 email subject line variants under 60 chars |
+
+### Freeform — any routine task
+
+Use `task="freeform"` with a custom `prompt` for anything not listed above:
+
+```
+offload(task="freeform", content="Connection refused at 10.0.1.5:5432", prompt="Rewrite as a user-friendly error message")
+```
 
 ### Never Offload
 

@@ -23,6 +23,14 @@ Use when processing multiple items in a session:
 - **Docstring generation**: `offload(task="docstring", content=<the function>)`
 - **Email subject lines**: `offload(task="subject_lines", content=<email description>)`
 
+## Freeform (any routine task)
+
+For anything not listed above, use freeform with a custom prompt:
+
+`offload(task="freeform", content=<the text>, prompt=<your instruction>)`
+
+Good candidates: rewriting error messages, summarizing logs, formatting data, extracting action items, rephrasing text, generating test names, writing regex patterns.
+
 ## Never Offload
 
 Handle these yourself:
