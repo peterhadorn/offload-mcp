@@ -386,6 +386,24 @@ async function main() {
       "WARNING: GOOGLE_AI_API_KEY not set. Get a free key at https://aistudio.google.com/apikey"
     );
   }
+
+  // Check if rules file is installed for common clients
+  const rulesTargets = [
+    { path: join(homedir(), ".claude", "rules", "offload.md"), name: "Claude Code" },
+  ];
+  const anyInstalled = rulesTargets.some(({ path }) => existsSync(path));
+  if (!anyInstalled) {
+    console.error(
+      "SETUP: Copy the rules file so your AI knows when to offload:\n" +
+      "  Claude Code:  cp $(npm root -g)/offload-mcp/rules/claude.md ~/.claude/rules/offload.md\n" +
+      "  Cursor:       merge rules/cursor.md into .cursorrules\n" +
+      "  Windsurf:     merge rules/windsurf.md into .windsurfrules\n" +
+      "  Cline:        paste rules/cline.md into Settings → Custom Instructions\n" +
+      "  Codex:        merge rules/codex.md into AGENTS.md\n" +
+      "  Or grab them from: https://github.com/peterhadorn/offload-mcp/tree/main/rules"
+    );
+  }
+
   seedFromFile();
   pruneOldEntries();
   const transport = new StdioServerTransport();
