@@ -350,8 +350,9 @@ server.tool(
 
       const warnings = checkWarnings();
       let text = response.text;
+      text += `\n\n[offloaded via ${MODEL} · ${response.totalTokens} tokens]`;
       if (warnings.length > 0) {
-        text += "\n\n" + warnings.map((w) => `[WARNING] ${w}`).join("\n");
+        text += "\n" + warnings.map((w) => `[WARNING] ${w}`).join("\n");
       }
 
       return { content: [{ type: "text" as const, text }] };
