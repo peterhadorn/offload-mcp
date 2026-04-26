@@ -12,12 +12,9 @@ Commit messages, docstrings, translations, code summaries, data extraction — o
 
 # 2. Add to Claude Code
 claude mcp add offload-mcp -e GOOGLE_AI_API_KEY=your_key -- npx offload-mcp
-
-# 3. Install the rules file (teaches your AI when to offload)
-curl -o ~/.claude/rules/offload.md https://raw.githubusercontent.com/peterhadorn/offload-mcp/main/rules/claude.md
 ```
 
-That's it. Next session, routine tasks go to Gemma 4 automatically.
+That's it. The server ships its routing rules via the MCP `instructions` field — your AI learns when to offload automatically on connect. Next session, routine tasks go to Gemma 4 without any extra config.
 
 ## What It Does
 
@@ -83,7 +80,6 @@ Tasks today:
 **Claude Code**
 ```bash
 claude mcp add offload-mcp -e GOOGLE_AI_API_KEY=your_key -- npx offload-mcp
-curl -o ~/.claude/rules/offload.md https://raw.githubusercontent.com/peterhadorn/offload-mcp/main/rules/claude.md
 ```
 
 **Cursor** — add to `.cursor/mcp.json`:
@@ -98,13 +94,14 @@ curl -o ~/.claude/rules/offload.md https://raw.githubusercontent.com/peterhadorn
   }
 }
 ```
-Then merge [`rules/cursor.md`](https://github.com/peterhadorn/offload-mcp/blob/main/rules/cursor.md) into `.cursorrules`.
 
-**Windsurf** — same JSON block in `~/.codeium/windsurf/mcp_config.json`. Rules: [`rules/windsurf.md`](https://github.com/peterhadorn/offload-mcp/blob/main/rules/windsurf.md) → `.windsurfrules`.
+**Windsurf** — same JSON block in `~/.codeium/windsurf/mcp_config.json`.
 
-**Cline** — MCP Servers → Add → command: `npx offload-mcp`, env: `GOOGLE_AI_API_KEY`. Rules: [`rules/cline.md`](https://github.com/peterhadorn/offload-mcp/blob/main/rules/cline.md) → Custom Instructions.
+**Cline** — MCP Servers → Add → command: `npx offload-mcp`, env: `GOOGLE_AI_API_KEY`.
 
-**Codex** — add to MCP config. Rules: [`rules/codex.md`](https://github.com/peterhadorn/offload-mcp/blob/main/rules/codex.md) → `AGENTS.md`.
+**Codex** — add `npx offload-mcp` to your MCP config.
+
+> **Optional fallback:** clients that don't auto-load MCP `instructions` won't see the routing rules. In that case, copy the matching file from [`rules/`](https://github.com/peterhadorn/offload-mcp/tree/main/rules) into the client's rules location (e.g. `~/.claude/rules/offload.md`, `.cursorrules`, `AGENTS.md`).
 
 ## Configuration
 
@@ -136,7 +133,7 @@ No GPU needed. No Docker. No Ollama. Just `npx`.
 git clone https://github.com/peterhadorn/offload-mcp
 cd offload-mcp
 npm install
-npm test      # 17 tests
+npm test      # 19 tests
 npm run build
 ```
 

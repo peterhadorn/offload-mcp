@@ -1,20 +1,31 @@
 {
   "name": "offload-mcp",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "MCP server that offloads routine AI coding tasks to free LLM APIs",
   "type": "module",
   "main": "build/index.js",
   "bin": {
-    "offload-mcp": "./build/index.js"
+    "offload-mcp": "build/index.js"
   },
-  "files": ["build", "rules"],
+  "files": [
+    "build",
+    "rules"
+  ],
   "scripts": {
     "build": "tsc && chmod +x build/index.js",
     "dev": "tsc --watch",
     "test": "vitest run",
     "prepublishOnly": "npm run build"
   },
-  "keywords": ["mcp", "llm", "offload", "gemma", "claude", "cursor", "free-api"],
+  "keywords": [
+    "mcp",
+    "llm",
+    "offload",
+    "gemma",
+    "claude",
+    "cursor",
+    "free-api"
+  ],
   "author": "Peter Hadorn",
   "license": "MIT",
   "engines": {
