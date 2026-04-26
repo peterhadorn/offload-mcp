@@ -1061,9 +1061,9 @@ Originally Task 4 required users to copy a rules file into `~/.claude/rules/` (o
 
 `npm link` from the project root → `/usr/local/bin/offload-mcp` (or nvm equivalent) symlinks to the current build. New Claude Code sessions resolve `npx offload-mcp` instantly without a registry round-trip. Re-run `npm run build && npm link` after future changes.
 
-- [ ] **Step 11.5: Verify Gemma model name**
+- [x] **Step 11.5: Verify Gemma model name**
 
-`OFFLOAD_MODEL` defaults to `gemma-4-31b-it`. Reviewer flagged this as nonexistent (Gemma 3 is the documented latest). Live testing has been working, so it likely resolves — but worth confirming via `https://ai.google.dev/gemma/docs` or AI Studio's model list before the npm publish.
+Confirmed against live `generativelanguage.googleapis.com/v1beta/models` (2026-04-26). `gemma-4-31b-it` exists. Full Gemma list: `gemma-3-{1b,4b,12b,27b}-it`, `gemma-3n-{e2b,e4b}-it`, `gemma-4-26b-a4b-it`, `gemma-4-31b-it`. Reviewer's claim that "Gemma 4 doesn't exist" was incorrect.
 
 ---
 
@@ -1081,4 +1081,4 @@ Originally Task 4 required users to copy a rules file into `~/.claude/rules/` (o
 | 8. Wire Into Projects | Done (user-scope MCP, no rules-file copy needed after Step 11.3) |
 | 9. Launch Preparation | Not started |
 | 10. Launch | Not started |
-| 11. v0.1.1 Hardening | 4/5 done (model-name verification pending) |
+| 11. v0.1.1 Hardening | Done (5/5) |
