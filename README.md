@@ -1,8 +1,8 @@
 # offload-mcp
 
-**Route routine AI coding tasks to free LLM APIs — so your expensive model doesn't waste tokens on commit messages.**
+**MCP server that offloads routine tasks from your AI coding assistant to Google's free Gemma 4 API.**
 
-Works with Claude Code, Cursor, Windsurf, Cline, and Codex. One MCP server, two tools, zero cost.
+Commit messages, docstrings, translations, code summaries, data extraction — or anything via freeform prompts. Works with Claude Code, Cursor, Windsurf, Cline, and Codex. Zero cost, zero setup.
 
 ## Quick Start
 
