@@ -21,21 +21,6 @@ const LOG_PATH = process.env.OFFLOAD_LOG_PATH ?? join(homedir(), ".offload-mcp",
 
 // --- Task Router ---
 
-const ALL_TASKS = new Set([
-  "commit_message",
-  "pr_description",
-  "code_summary",
-  "translate",
-  "changelog_entry",
-  "naming_suggestion",
-  "classify",
-  "extract_data",
-  "code_review_single",
-  "docstring",
-  "subject_lines",
-  "freeform",
-]);
-
 const PROMPTS: Record<string, string> = {
   commit_message:
     "Write a concise git commit message for this diff. " +
@@ -72,6 +57,8 @@ const PROMPTS: Record<string, string> = {
     "Generate 5 email subject line variants. " +
     "Under 60 chars each. Vary: question, benefit, urgency, curiosity.",
 };
+
+const ALL_TASKS = new Set([...Object.keys(PROMPTS), "freeform"]);
 
 function buildPrompt(task: string, content: string, customPrompt?: string): string {
   if (task === "freeform") {
@@ -202,6 +189,12 @@ function reserveCall(): boolean {
   if (mem.calls >= RPD_LIMIT) return false;
   mem.calls++;
   return true;
+}
+
+// Release a previously reserved slot when the API call fails before billing.
+function releaseCall(): void {
+  ensureMemDay();
+  if (mem.calls > 0) mem.calls--;
 }
 
 // Record tokens and task after a successful API call.
@@ -357,6 +350,7 @@ server.tool(
 
       return { content: [{ type: "text" as const, text }] };
     } catch (err: any) {
+      releaseCall();
       const msg = (err?.message ?? String(err)).replace(/key=[^&\s]+/gi, "key=REDACTED");
       return {
         content: [
@@ -428,7 +422,7 @@ if (isDirectRun) {
 
 export {
   buildPrompt, ALL_TASKS,
-  reserveCall, recordUsage, loadUsage, saveUsage,
+  reserveCall, releaseCall, recordUsage, loadUsage, saveUsage,
   seedFromFile, todayKey, todayCalls,
   checkWarnings, pruneOldEntries, getStatus,
 };

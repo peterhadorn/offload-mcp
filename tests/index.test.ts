@@ -82,6 +82,24 @@ describe("tracker (isolated via env)", () => {
     expect(status).toContain("translate: 1");
   });
 
+  it("releaseCall returns a slot when the API call fails", async () => {
+    vi.stubEnv("OFFLOAD_RPD_LIMIT", "2");
+    const { reserveCall, releaseCall, todayCalls } = await loadTracker();
+    expect(reserveCall()).toBe(true);
+    expect(reserveCall()).toBe(true);
+    expect(reserveCall()).toBe(false);
+    releaseCall();
+    expect(todayCalls()).toBe(1);
+    expect(reserveCall()).toBe(true);
+  });
+
+  it("releaseCall never goes negative", async () => {
+    const { releaseCall, todayCalls } = await loadTracker();
+    releaseCall();
+    releaseCall();
+    expect(todayCalls()).toBe(0);
+  });
+
   it("reserveCall enforces quota and prevents concurrent bypass", async () => {
     vi.stubEnv("OFFLOAD_RPD_LIMIT", "3");
     const { reserveCall } = await loadTracker();
