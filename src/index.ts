@@ -33,6 +33,7 @@ const ALL_TASKS = new Set([
   "code_review_single",
   "docstring",
   "subject_lines",
+  "freeform",
 ]);
 
 const PROMPTS: Record<string, string> = {
@@ -72,7 +73,11 @@ const PROMPTS: Record<string, string> = {
     "Under 60 chars each. Vary: question, benefit, urgency, curiosity.",
 };
 
-function buildPrompt(task: string, content: string): string {
+function buildPrompt(task: string, content: string, customPrompt?: string): string {
+  if (task === "freeform") {
+    if (!customPrompt) throw new Error("freeform task requires a prompt parameter");
+    return `${customPrompt}\n\n---\n\n${content}`;
+  }
   const system = PROMPTS[task];
   if (!system) throw new Error(`Unknown task: ${task}`);
   return `${system}\n\n---\n\n${content}`;
@@ -304,14 +309,16 @@ server.tool(
   "Offload a routine task to a free LLM API (Gemma). " +
     "Use for: commit messages, PR descriptions, code summaries, translations, " +
     "changelog entries, naming suggestions, classification, data extraction, " +
-    "single-function code review, docstrings, email subject lines.",
+    "single-function code review, docstrings, email subject lines. " +
+    "Use task='freeform' with a custom prompt for anything else.",
   {
     task: z
       .enum([...ALL_TASKS] as [string, ...string[]])
-      .describe("Task type to offload"),
+      .describe("Task type to offload. Use 'freeform' with a custom prompt for unlisted tasks."),
     content: z.string().describe("Content to process (diff, code, text, etc.)"),
+    prompt: z.string().optional().describe("Custom instruction for freeform tasks. Required when task='freeform', ignored otherwise."),
   },
-  async ({ task, content }) => {
+  async ({ task, content, prompt: customPrompt }) => {
     if (!API_KEY) {
       return {
         content: [
@@ -323,8 +330,12 @@ server.tool(
       };
     }
 
-    // Reserve a call slot synchronously before the async API call.
-    // This prevents concurrent requests from both passing the quota check.
+    if (task === "freeform" && !customPrompt) {
+      return {
+        content: [{ type: "text" as const, text: "[ERROR] task='freeform' requires a prompt parameter." }],
+      };
+    }
+
     if (!reserveCall()) {
       return {
         content: [{ type: "text" as const, text: `[QUOTA] Daily limit reached (${RPD_LIMIT} calls). Handle locally.` }],
@@ -332,7 +343,7 @@ server.tool(
     }
 
     try {
-      const prompt = buildPrompt(task, content);
+      const prompt = buildPrompt(task, content, customPrompt);
       const response = await callGemma(prompt);
 
       recordUsage(response.totalTokens, task);

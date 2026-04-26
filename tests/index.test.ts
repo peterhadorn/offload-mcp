@@ -14,14 +14,26 @@ describe("buildPrompt", () => {
     expect(() => buildPrompt("unknown", "content")).toThrow("Unknown task");
   });
 
-  it("every task in ALL_TASKS has a prompt", () => {
+  it("every predefined task in ALL_TASKS has a prompt", () => {
     for (const task of ALL_TASKS) {
+      if (task === "freeform") continue;
       expect(() => buildPrompt(task, "test")).not.toThrow();
     }
   });
 
-  it("ALL_TASKS has 11 task types", () => {
-    expect(ALL_TASKS.size).toBe(11);
+  it("ALL_TASKS has 12 task types", () => {
+    expect(ALL_TASKS.size).toBe(12);
+    expect(ALL_TASKS.has("freeform")).toBe(true);
+  });
+
+  it("freeform uses custom prompt", () => {
+    const prompt = buildPrompt("freeform", "some text", "Summarize in one sentence.");
+    expect(prompt).toContain("Summarize in one sentence.");
+    expect(prompt).toContain("some text");
+  });
+
+  it("freeform throws without prompt", () => {
+    expect(() => buildPrompt("freeform", "content")).toThrow("requires a prompt");
   });
 });
 
