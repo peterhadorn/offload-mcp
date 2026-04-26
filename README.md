@@ -1,132 +1,73 @@
 # offload-mcp
 
-**Offload routine AI coding tasks to free LLM APIs**
+**Route routine AI coding tasks to free LLM APIs — so your expensive model doesn't waste tokens on commit messages.**
 
-Works with Claude Code, Cursor, Windsurf, Cline, and Codex. Adds two MCP tools that route low-value tasks (commit messages, docstrings, translations) to Gemma via Google AI Studio's free tier — keeping your primary AI's context clean.
-
----
-
-## Why
-
-- **Zero cost** — Google AI Studio free tier, no credit card
-- **Any MCP client** — one config block, any editor
-- **11 task types** — commit messages, PR descriptions, docstrings, and more
-- **Daily quota tracking** — warnings at 50/75/90%, hard stop at limit
-
----
+Works with Claude Code, Cursor, Windsurf, Cline, and Codex. One MCP server, two tools, zero cost.
 
 ## Quick Start
 
-**1. Get a free API key**
-
-[https://aistudio.google.com/apikey](https://aistudio.google.com/apikey)
-
-**2. Add to your MCP client**
-
 ```bash
+# 1. Get a free API key (no credit card)
+#    → https://aistudio.google.com/apikey
+
+# 2. Add to Claude Code
 claude mcp add offload-mcp -e GOOGLE_AI_API_KEY=your_key -- npx offload-mcp
+
+# 3. Install the rules file (teaches your AI when to offload)
+curl -o ~/.claude/rules/offload.md https://raw.githubusercontent.com/peterhadorn/offload-mcp/main/rules/claude.md
 ```
 
-Or set the env var globally and run:
+That's it. Next session, routine tasks go to Gemma 4 automatically.
 
-```bash
-claude mcp add offload-mcp -- npx offload-mcp
+## What It Does
+
+Your AI assistant calls `offload(task, content)` → offload-mcp sends it to Google's free Gemma 4 31B API → result comes back with a tag:
+
+```
+feat(auth): add JWT token validation
+
+[offloaded via gemma-4-31b-it · 63 tokens]
 ```
 
-**3. Copy the rules file**
+### Built-in Tasks
 
-```bash
-cp "$(npm root -g)/offload-mcp/rules/claude.md" ~/.claude/rules/offload.md
+| Task | Example |
+|------|---------|
+| `commit_message` | Generate conventional commit from a diff |
+| `pr_description` | PR summary with bullets and file list |
+| `code_summary` | 2-3 sentence summary of what code does |
+| `translate` | Translate text, preserving formatting and tone |
+| `changelog_entry` | Changelog line per logical change |
+| `naming_suggestion` | 3 name options for a variable, function, or class |
+| `classify` | Classify text into categories |
+| `extract_data` | Pull structured data from unstructured text |
+| `code_review_single` | Review a single function for bugs |
+| `docstring` | Docstring with params, returns, throws |
+| `subject_lines` | 5 email subject line variants |
+
+### Freeform
+
+For anything not listed above, use `task="freeform"` with a custom prompt:
+
+```
+offload(task="freeform", content="ECONNREFUSED 10.0.1.5:5432", prompt="Rewrite as a user-friendly error message")
 ```
 
-Or grab it directly from GitHub: [rules/claude.md](https://github.com/peterhadorn/offload-mcp/blob/main/rules/claude.md). This tells your AI assistant when to use the offload tools automatically.
-
----
-
-## Client Setup
-
-| Client | Install command |
-|--------|----------------|
-| **Claude Code** | `claude mcp add offload-mcp -e GOOGLE_AI_API_KEY=your_key -- npx offload-mcp` |
-| **Cursor** | Add to `.cursor/mcp.json`: `{"mcpServers": {"offload-mcp": {"command": "npx", "args": ["offload-mcp"], "env": {"GOOGLE_AI_API_KEY": "your_key"}}}}` |
-| **Windsurf** | Add to `~/.codeium/windsurf/mcp_config.json` with same JSON block |
-| **Cline** | MCP Servers → Add → command: `npx offload-mcp`, env: `GOOGLE_AI_API_KEY` |
-| **Codex** | Add to `codex.yaml` under `mcpServers` with same structure |
-
----
+Rewrite error messages, summarize logs, format data, extract action items, generate regex — anything a smaller model handles fine.
 
 ## Tools
 
 ### `offload`
 
-Routes a task to Gemma and returns the result.
-
 | Parameter | Type | Description |
 |-----------|------|-------------|
-| `task` | enum (see below) | Task type to offload. Use `freeform` for unlisted tasks. |
-| `content` | string | Content to process (diff, code, text, etc.) |
-| `prompt` | string (optional) | Custom instruction. Required when `task="freeform"`. |
+| `task` | enum | Built-in task name or `freeform` |
+| `content` | string | The text to process |
+| `prompt` | string (optional) | Custom instruction — required for `freeform` |
 
 ### `offload_status`
 
-No parameters. Returns daily and monthly usage stats.
-
----
-
-## Task Tiers
-
-### Tier 1 — Always safe to offload
-
-| Task | What it does |
-|------|-------------|
-| `commit_message` | Writes a conventional commit message from a diff |
-| `pr_description` | Generates PR summary with bullets and file list |
-| `code_summary` | Summarizes what a file or function does in 2-3 sentences |
-| `translate` | Translates text (German ↔ English), preserving formatting |
-| `changelog_entry` | Writes a changelog line per logical change in a diff |
-| `naming_suggestion` | Suggests 3 names for a variable, function, or class |
-
-### Tier 2 — Offload when content fits context
-
-| Task | What it does |
-|------|-------------|
-| `classify` | Classifies text into requested categories |
-| `extract_data` | Extracts structured data from unstructured text |
-| `code_review_single` | Reviews a single function for bugs and improvements |
-| `docstring` | Writes a docstring (summary, params, returns, throws) |
-| `subject_lines` | Generates 5 email subject line variants under 60 chars |
-
-### Freeform — any routine task
-
-Use `task="freeform"` with a custom `prompt` for anything not listed above:
-
-```
-offload(task="freeform", content="Connection refused at 10.0.1.5:5432", prompt="Rewrite as a user-friendly error message")
-```
-
-### Never Offload
-
-- Multi-file architecture decisions
-- Security-sensitive code
-- Tasks requiring your full project context
-- Anything needing reasoning about the whole codebase
-
----
-
-## Configuration
-
-| Env var | Default | Description |
-|---------|---------|-------------|
-| `GOOGLE_AI_API_KEY` | — | **Required.** Free key from [aistudio.google.com/apikey](https://aistudio.google.com/apikey) |
-| `OFFLOAD_MODEL` | `gemma-4-31b-it` | Model to use via Google GenAI API |
-| `OFFLOAD_RPD_LIMIT` | `1500` | Daily request limit (requests per day) |
-| `OFFLOAD_LOG_PATH` | `~/.offload-mcp/usage.json` | Path for usage tracking data |
-
----
-
-## Usage Tracking
-
-The `offload_status` tool reports:
+No parameters. Returns usage stats:
 
 ```
 Today: 47/1500 calls (3.1%), 28,500 tokens offloaded
@@ -137,38 +78,57 @@ Tasks today:
   code_summary: 9
 ```
 
-- Warnings appended to responses at **50%, 75%, 90%** of daily limit
-- Hard stop when daily limit is reached — falls back to primary AI
-- Data stored in `~/.offload-mcp/usage.json`, 30-day retention, atomic writes
+## Client Setup
 
----
+**Claude Code**
+```bash
+claude mcp add offload-mcp -e GOOGLE_AI_API_KEY=your_key -- npx offload-mcp
+curl -o ~/.claude/rules/offload.md https://raw.githubusercontent.com/peterhadorn/offload-mcp/main/rules/claude.md
+```
+
+**Cursor** — add to `.cursor/mcp.json`:
+```json
+{
+  "mcpServers": {
+    "offload-mcp": {
+      "command": "npx",
+      "args": ["offload-mcp"],
+      "env": { "GOOGLE_AI_API_KEY": "your_key" }
+    }
+  }
+}
+```
+Then merge [`rules/cursor.md`](https://github.com/peterhadorn/offload-mcp/blob/main/rules/cursor.md) into `.cursorrules`.
+
+**Windsurf** — same JSON block in `~/.codeium/windsurf/mcp_config.json`. Rules: [`rules/windsurf.md`](https://github.com/peterhadorn/offload-mcp/blob/main/rules/windsurf.md) → `.windsurfrules`.
+
+**Cline** — MCP Servers → Add → command: `npx offload-mcp`, env: `GOOGLE_AI_API_KEY`. Rules: [`rules/cline.md`](https://github.com/peterhadorn/offload-mcp/blob/main/rules/cline.md) → Custom Instructions.
+
+**Codex** — add to MCP config. Rules: [`rules/codex.md`](https://github.com/peterhadorn/offload-mcp/blob/main/rules/codex.md) → `AGENTS.md`.
+
+## Configuration
+
+| Env var | Default | Description |
+|---------|---------|-------------|
+| `GOOGLE_AI_API_KEY` | — | **Required.** Free key from [aistudio.google.com](https://aistudio.google.com/apikey) |
+| `OFFLOAD_MODEL` | `gemma-4-31b-it` | Model to use |
+| `OFFLOAD_RPD_LIMIT` | `1500` | Max requests per day |
+| `OFFLOAD_LOG_PATH` | `~/.offload-mcp/usage.json` | Usage data location |
 
 ## How It Works
 
 ```
-Your AI assistant
-  → calls offload(task, content)
-    → Gemma API (Google AI Studio free tier)
-      → result returned to your AI assistant
+You: "commit this"
+  → Claude reads the rules → sees "commit messages → offload"
+    → offload(task="commit_message", content=<diff>)
+      → Gemma 4 API (free, 1500 req/day)
+        → "feat(auth): add JWT validation"
+          → Claude uses it, you save tokens
 ```
 
-The MCP server runs locally via `npx offload-mcp`. Your AI decides when to offload based on the rules file. Results come back as plain text — no special handling needed.
+Quota enforced in-memory (survives I/O failures). File persistence is best-effort for cross-restart continuity. Warnings at 50/75/90%, hard stop at the limit — falls back to your primary AI silently.
 
----
-
-## Why Not Local?
-
-Local Ollama requires a GPU, significant RAM, and setup time. Free APIs work on any machine — including CI/CD environments, low-end laptops, and remote dev boxes — with no hardware requirements.
-
----
-
-## Roadmap
-
-**v0.2**
-- Multiple providers: Groq, Mistral, Ollama (optional local fallback)
-- Per-task provider routing
-
----
+No GPU needed. No Docker. No Ollama. Just `npx`.
 
 ## Development
 
@@ -176,13 +136,9 @@ Local Ollama requires a GPU, significant RAM, and setup time. Free APIs work on 
 git clone https://github.com/peterhadorn/offload-mcp
 cd offload-mcp
 npm install
-npm test
+npm test      # 17 tests
 npm run build
 ```
-
-Tests cover: task routing, prompt building, quota logic, usage tracking, and status output.
-
----
 
 ## License
 
