@@ -1,6 +1,12 @@
 # offload-mcp
 
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![GitHub release](https://img.shields.io/github/v/release/peterhadorn/offload-mcp?display_name=tag&sort=semver)](https://github.com/peterhadorn/offload-mcp/releases)
+[![GitHub stars](https://img.shields.io/github/stars/peterhadorn/offload-mcp?style=social)](https://github.com/peterhadorn/offload-mcp/stargazers)
+
 **MCP server that offloads routine tasks from your AI coding assistant to Google's free Gemma 4 API.**
+
+Every commit message your AI writes burns 500-2000 input tokens of context. Multiply by every translation, code summary, and docstring. offload-mcp routes those tasks to a free Gemma 4 endpoint (1,500 calls/day) so your primary model keeps its context for the work that actually needs it.
 
 Commit messages, docstrings, translations, code summaries, data extraction — or anything via freeform prompts. Works with Claude Code, Cursor, Windsurf, Cline, and Codex. Zero cost, zero setup.
 
@@ -116,7 +122,7 @@ claude mcp add offload-mcp -e GOOGLE_AI_API_KEY=your_key -- npx offload-mcp
 
 ```
 You: "commit this"
-  → Claude reads the rules → sees "commit messages → offload"
+  → Claude reads the MCP `instructions` → sees "commit messages → offload"
     → offload(task="commit_message", content=<diff>)
       → Gemma 4 API (free, 1500 req/day)
         → "feat(auth): add JWT validation"
@@ -140,3 +146,7 @@ npm run build
 ## License
 
 MIT
+
+---
+
+If offload-mcp saves you tokens (or money), star the repo — it's the only signal I have that this is useful to someone besides me. → [github.com/peterhadorn/offload-mcp](https://github.com/peterhadorn/offload-mcp)
