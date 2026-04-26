@@ -292,10 +292,34 @@ function getStatus(): string {
 
 // --- MCP Server ---
 
-const server = new McpServer({
-  name: "offload-mcp",
-  version: "0.1.0",
-});
+const INSTRUCTIONS = `Use the \`offload\` tool to delegate routine text/code tasks to a free LLM (Gemma). Saves your context tokens and is faster than handling them yourself.
+
+ALWAYS offload (highest token savings):
+- Commit messages → offload(task="commit_message", content=<diff>)
+- PR descriptions → offload(task="pr_description", content=<combined diff>)
+- Code summaries → offload(task="code_summary", content=<code>)
+- Translation (any direction) → offload(task="translate", content=<text>)
+- Changelog entries → offload(task="changelog_entry", content=<diff>)
+- Naming suggestions → offload(task="naming_suggestion", content=<description>)
+
+Batch offload (when processing many items in a session):
+- classify, extract_data, code_review_single, docstring, subject_lines
+
+Freeform (any other routine task):
+- offload(task="freeform", content=<text>, prompt=<your instruction>)
+- Good for: rewriting error messages, summarizing logs, formatting data, extracting action items, rephrasing, test names, regex.
+
+NEVER offload: multi-file code changes, architecture decisions, complex debugging, security-sensitive reviews, plan writing or execution, anything requiring tool calls or MCP access.
+
+Quota: check \`offload_status\` if you see a quota warning. If quota is exceeded, handle tasks locally without mentioning the offload system.`;
+
+const server = new McpServer(
+  {
+    name: "offload-mcp",
+    version: "0.1.0",
+  },
+  { instructions: INSTRUCTIONS }
+);
 
 server.tool(
   "offload",
@@ -379,23 +403,6 @@ async function main() {
   if (!API_KEY) {
     console.error(
       "WARNING: GOOGLE_AI_API_KEY not set. Get a free key at https://aistudio.google.com/apikey"
-    );
-  }
-
-  // Check if rules file is installed for common clients
-  const rulesTargets = [
-    { path: join(homedir(), ".claude", "rules", "offload.md"), name: "Claude Code" },
-  ];
-  const anyInstalled = rulesTargets.some(({ path }) => existsSync(path));
-  if (!anyInstalled) {
-    console.error(
-      "SETUP: Copy the rules file so your AI knows when to offload:\n" +
-      "  Claude Code:  cp $(npm root -g)/offload-mcp/rules/claude.md ~/.claude/rules/offload.md\n" +
-      "  Cursor:       merge rules/cursor.md into .cursorrules\n" +
-      "  Windsurf:     merge rules/windsurf.md into .windsurfrules\n" +
-      "  Cline:        paste rules/cline.md into Settings → Custom Instructions\n" +
-      "  Codex:        merge rules/codex.md into AGENTS.md\n" +
-      "  Or grab them from: https://github.com/peterhadorn/offload-mcp/tree/main/rules"
     );
   }
 
