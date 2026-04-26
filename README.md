@@ -118,7 +118,7 @@ offload(task="freeform", content="Connection refused at 10.0.1.5:5432", prompt="
 | Env var | Default | Description |
 |---------|---------|-------------|
 | `GOOGLE_AI_API_KEY` | — | **Required.** Free key from [aistudio.google.com/apikey](https://aistudio.google.com/apikey) |
-| `OFFLOAD_MODEL` | `gemma-3-27b-it` | Model to use via Google GenAI API |
+| `OFFLOAD_MODEL` | `gemma-4-31b-it` | Model to use via Google GenAI API |
 | `OFFLOAD_RPD_LIMIT` | `1500` | Daily request limit (requests per day) |
 | `OFFLOAD_LOG_PATH` | `~/.offload-mcp/usage.json` | Path for usage tracking data |
 

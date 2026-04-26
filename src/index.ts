@@ -12,7 +12,7 @@ import { fileURLToPath } from "url";
 // --- Config ---
 
 const API_KEY = process.env.GOOGLE_AI_API_KEY ?? "";
-const MODEL = process.env.OFFLOAD_MODEL ?? "gemma-3-27b-it";
+const MODEL = process.env.OFFLOAD_MODEL ?? "gemma-4-31b-it";
 const RPD_LIMIT = (() => {
   const raw = parseInt(process.env.OFFLOAD_RPD_LIMIT ?? "1500", 10);
   return Number.isFinite(raw) && raw > 0 ? raw : 1500;
