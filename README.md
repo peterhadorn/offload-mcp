@@ -35,7 +35,11 @@ claude mcp add offload-mcp -- npx offload-mcp
 
 **3. Copy the rules file**
 
-Copy `rules/claude.md` into your project's `.claude/` directory (or equivalent). This tells your AI assistant when to use the offload tools automatically.
+```bash
+cp "$(npm root -g)/offload-mcp/rules/claude.md" ~/.claude/rules/offload.md
+```
+
+Or grab it directly from GitHub: [rules/claude.md](https://github.com/peterhadorn/offload-mcp/blob/main/rules/claude.md). This tells your AI assistant when to use the offload tools automatically.
 
 ---
 
