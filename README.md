@@ -24,7 +24,7 @@ Works with Claude Code, Cursor, Windsurf, Cline, and Codex. Adds two MCP tools t
 **2. Add to your MCP client**
 
 ```bash
-GOOGLE_AI_API_KEY=your_key claude mcp add offload-mcp -- npx offload-mcp
+claude mcp add offload-mcp -e GOOGLE_AI_API_KEY=your_key -- npx offload-mcp
 ```
 
 Or set the env var globally and run:
@@ -35,7 +35,7 @@ claude mcp add offload-mcp -- npx offload-mcp
 
 **3. Copy the rules file**
 
-Copy `rules/offload.md` into your project's `.claude/` directory (or equivalent). This tells your AI assistant when to use the offload tools automatically.
+Copy `rules/claude.md` into your project's `.claude/` directory (or equivalent). This tells your AI assistant when to use the offload tools automatically.
 
 ---
 
@@ -43,7 +43,7 @@ Copy `rules/offload.md` into your project's `.claude/` directory (or equivalent)
 
 | Client | Install command |
 |--------|----------------|
-| **Claude Code** | `GOOGLE_AI_API_KEY=your_key claude mcp add offload-mcp -- npx offload-mcp` |
+| **Claude Code** | `claude mcp add offload-mcp -e GOOGLE_AI_API_KEY=your_key -- npx offload-mcp` |
 | **Cursor** | Add to `.cursor/mcp.json`: `{"mcpServers": {"offload-mcp": {"command": "npx", "args": ["offload-mcp"], "env": {"GOOGLE_AI_API_KEY": "your_key"}}}}` |
 | **Windsurf** | Add to `~/.codeium/windsurf/mcp_config.json` with same JSON block |
 | **Cline** | MCP Servers → Add → command: `npx offload-mcp`, env: `GOOGLE_AI_API_KEY` |
