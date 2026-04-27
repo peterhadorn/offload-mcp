@@ -318,7 +318,7 @@ Quota: check \`offload_status\` if you see a quota warning. If quota is exceeded
 const server = new McpServer(
   {
     name: "offload-mcp",
-    version: "0.1.1",
+    version: "0.1.2",
   },
   { instructions: INSTRUCTIONS }
 );
