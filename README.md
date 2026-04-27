@@ -4,11 +4,13 @@
 [![GitHub release](https://img.shields.io/github/v/release/peterhadorn/offload-mcp?display_name=tag&sort=semver)](https://github.com/peterhadorn/offload-mcp/releases)
 [![GitHub stars](https://img.shields.io/github/stars/peterhadorn/offload-mcp?style=social)](https://github.com/peterhadorn/offload-mcp/stargazers)
 
-**MCP server that offloads routine tasks from your AI coding assistant to Google's free Gemma 4 API.**
+**Offload routine text/code tasks from your AI coding assistant to Google's free Gemma 4 API.**
 
-Every commit message your AI writes burns 500-2000 input tokens of context. Multiply by every translation, code summary, and docstring. offload-mcp routes those tasks to a free Gemma 4 endpoint (1,500 calls/day) so your primary model keeps its context for the work that actually needs it.
+Tell Claude (or Cursor / Cline / Codex / Windsurf) `"offload this translation"`, `"offload a commit message for this diff"`, or `"use offload to summarize this code"` — your AI calls Gemma, you save tokens, the result comes back tagged with the model and token count.
 
-Commit messages, docstrings, translations, code summaries, data extraction — or anything via freeform prompts. Works with Claude Code, Cursor, Windsurf, Cline, and Codex. Zero cost, zero setup.
+![offload-mcp demo](assets/demo.gif)
+
+Translations, commit messages, docstrings, code summaries, data extraction — or anything via freeform prompts. Free Gemma 4 endpoint (1,500 calls/day). Works with every MCP-aware AI tool. Zero cost, zero setup.
 
 ## Quick Start
 
@@ -20,7 +22,30 @@ Commit messages, docstrings, translations, code summaries, data extraction — o
 claude mcp add offload-mcp -e GOOGLE_AI_API_KEY=your_key -- npx offload-mcp
 ```
 
-That's it. The server ships its routing rules via the MCP `instructions` field — your AI learns when to offload automatically on connect. Next session, routine tasks go to Gemma 4 without any extra config.
+That's it. Next session, you can ask your AI to offload anything routine to Gemma.
+
+## Usage
+
+**Primary path — invoke explicitly.** Tell your AI to offload, and it will:
+
+```
+You: offload this translation to mexican spanish: <paste German text>
+AI:  Aquí tienes algunos abogados recomendados en Bern...
+     [offloaded via gemma-4-31b-it · 2320 tokens]
+
+You: offload a commit message for the current diff
+AI:  feat(auth): add JWT token validation
+     [offloaded via gemma-4-31b-it · 307 tokens]
+
+You: use offload to give me 5 cold-email subjects for a Postgres backup tool
+AI:  1. Stop losing sleep over Postgres backups
+     2. ...
+     [offloaded via gemma-4-31b-it · 412 tokens]
+```
+
+The tag tells you which model handled it and how many tokens stayed off your primary model's context.
+
+**Bonus path — auto-routing.** The server ships routing rules via the MCP `instructions` field. For tasks like commit messages or translations, your AI *may* route to Gemma automatically without you asking. Reliability varies by client and prompt — for guarantees, invoke explicitly.
 
 ## What It Does
 
@@ -121,12 +146,11 @@ claude mcp add offload-mcp -e GOOGLE_AI_API_KEY=your_key -- npx offload-mcp
 ## How It Works
 
 ```
-You: "commit this"
-  → Claude reads the MCP `instructions` → sees "commit messages → offload"
-    → offload(task="commit_message", content=<diff>)
-      → Gemma 4 API (free, 1500 req/day)
-        → "feat(auth): add JWT validation"
-          → Claude uses it, you save tokens
+You: "offload this translation: <text>"
+  → Your AI calls offload(task="translate", content=<text>)
+    → Gemma 4 API (free, 1500 req/day)
+      → "Aquí tienes... [offloaded via gemma-4-31b-it · 2320 tokens]"
+        → Your AI relays the result, those 2320 tokens stayed off your primary model's context
 ```
 
 Quota enforced in-memory (survives I/O failures). File persistence is best-effort for cross-restart continuity. Warnings at 50/75/90%, hard stop at the limit — falls back to your primary AI silently.

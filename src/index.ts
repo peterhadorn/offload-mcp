@@ -33,8 +33,9 @@ const PROMPTS: Record<string, string> = {
     "Summarize what this code does in 2-3 sentences. " +
     "Focus on purpose, not implementation details.",
   translate:
-    "Translate the following text. Preserve formatting and tone. " +
-    "German to English or English to German, based on the source.",
+    "Translate the following text. Preserve formatting, tone, named entities, and special characters. " +
+    "If the input includes a target language hint (e.g., 'to Mexican Spanish:', 'into French:', 'auf Deutsch:'), translate to that target. " +
+    "Otherwise translate German↔English based on the source language.",
   changelog_entry:
     "Write a changelog entry for this diff. " +
     "Format: '- type: description' per logical change.",
@@ -294,7 +295,7 @@ function getStatus(): string {
 
 const INSTRUCTIONS = `Use the \`offload\` tool to delegate routine text/code tasks to a free LLM (Gemma). Saves your context tokens and is faster than handling them yourself.
 
-ALWAYS offload (highest token savings):
+MANDATORY — when offload-mcp is connected, do NOT write these yourself; always offload:
 - Commit messages → offload(task="commit_message", content=<diff>)
 - PR descriptions → offload(task="pr_description", content=<combined diff>)
 - Code summaries → offload(task="code_summary", content=<code>)
@@ -302,12 +303,13 @@ ALWAYS offload (highest token savings):
 - Changelog entries → offload(task="changelog_entry", content=<diff>)
 - Naming suggestions → offload(task="naming_suggestion", content=<description>)
 
-Batch offload (when processing many items in a session):
-- classify, extract_data, code_review_single, docstring, subject_lines
+Also offload when processing many items in a session: classify, extract_data, code_review_single, docstring, subject_lines.
 
 Freeform (any other routine task):
 - offload(task="freeform", content=<text>, prompt=<your instruction>)
 - Good for: rewriting error messages, summarizing logs, formatting data, extracting action items, rephrasing, test names, regex.
+
+When relaying an offloaded result to the user, preserve the [offloaded via gemma-...] tag verbatim from the tool's response — it shows the user which tasks were offloaded and how many tokens were saved. Do not strip it, do not paraphrase it.
 
 NEVER offload: multi-file code changes, architecture decisions, complex debugging, security-sensitive reviews, plan writing or execution, anything requiring tool calls or MCP access.
 
@@ -324,9 +326,11 @@ const server = new McpServer(
 server.tool(
   "offload",
   "Offload a routine task to a free LLM API (Gemma). " +
-    "Use for: commit messages, PR descriptions, code summaries, translations, " +
+    "Use for: commit messages, PR descriptions, code summaries, German↔English translations, " +
     "changelog entries, naming suggestions, classification, data extraction, " +
     "single-function code review, docstrings, email subject lines. " +
+    "For translations to other languages (Spanish, French, Italian, etc.) or specific dialects " +
+    "(Mexican Spanish, Brazilian Portuguese, etc.), use task='freeform' with a custom prompt. " +
     "Use task='freeform' with a custom prompt for anything else.",
   {
     task: z
@@ -366,10 +370,10 @@ server.tool(
       recordUsage(response.totalTokens, task);
 
       const warnings = checkWarnings();
-      let text = response.text;
-      text += `\n\n[offloaded via ${MODEL} · ${response.totalTokens} tokens]`;
+      const tag = `[offloaded via ${MODEL} · ${response.totalTokens} tokens]`;
+      let text = `${tag}\n\n${response.text}`;
       if (warnings.length > 0) {
-        text += "\n" + warnings.map((w) => `[WARNING] ${w}`).join("\n");
+        text += "\n\n" + warnings.map((w) => `[WARNING] ${w}`).join("\n");
       }
 
       return { content: [{ type: "text" as const, text }] };
