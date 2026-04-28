@@ -2,7 +2,6 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![GitHub release](https://img.shields.io/github/v/release/peterhadorn/offload-mcp?display_name=tag&sort=semver)](https://github.com/peterhadorn/offload-mcp/releases)
-[![GitHub stars](https://img.shields.io/github/stars/peterhadorn/offload-mcp?style=social)](https://github.com/peterhadorn/offload-mcp/stargazers)
 
 **Offload routine text/code tasks from your AI coding assistant to Google's free Gemma 4 API.**
 
