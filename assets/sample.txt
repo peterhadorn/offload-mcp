@@ -1,0 +1,1 @@
+Self-hosted analytics that respects your users. No cookies, no fingerprinting, no third-party trackers. Track page views, referrers, and conversions with a single line of JavaScript. Free and open source.

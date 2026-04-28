@@ -33,7 +33,8 @@ const PROMPTS: Record<string, string> = {
     "Summarize what this code does in 2-3 sentences. " +
     "Focus on purpose, not implementation details.",
   translate:
-    "Translate the following text. Preserve formatting, tone, named entities, and special characters. " +
+    "Translate the following text. Output ONLY the translation — no options, no commentary, no explanations, no introductions. " +
+    "Preserve formatting, tone, named entities, and special characters. " +
     "If the input includes a target language hint (e.g., 'to Mexican Spanish:', 'into French:', 'auf Deutsch:'), translate to that target. " +
     "Otherwise translate German↔English based on the source language.",
   changelog_entry:
@@ -309,7 +310,8 @@ Freeform (any other routine task):
 - offload(task="freeform", content=<text>, prompt=<your instruction>)
 - Good for: rewriting error messages, summarizing logs, formatting data, extracting action items, rephrasing, test names, regex.
 
-When relaying an offloaded result to the user, preserve the [offloaded via gemma-...] tag verbatim from the tool's response — it shows the user which tasks were offloaded and how many tokens were saved. Do not strip it, do not paraphrase it.
+CRITICAL — relaying offloaded results:
+The offload tool's output IS your final answer. Relay it VERBATIM. Do NOT summarize, paraphrase, reformat, or wrap with commentary like "Here's the translation:" or "Done!". Pass the tool output through as-is. This includes preserving the "—— Offloaded via gemma-..." footer at the bottom — that footer is the user's proof of offloading and the token savings counter. Stripping it defeats the entire purpose of this tool.
 
 NEVER offload: multi-file code changes, architecture decisions, complex debugging, security-sensitive reviews, plan writing or execution, anything requiring tool calls or MCP access.
 
@@ -318,7 +320,7 @@ Quota: check \`offload_status\` if you see a quota warning. If quota is exceeded
 const server = new McpServer(
   {
     name: "offload-mcp",
-    version: "0.1.2",
+    version: "0.1.3",
   },
   { instructions: INSTRUCTIONS }
 );
@@ -326,12 +328,12 @@ const server = new McpServer(
 server.tool(
   "offload",
   "Offload a routine task to a free LLM API (Gemma). " +
-    "Use for: commit messages, PR descriptions, code summaries, German↔English translations, " +
-    "changelog entries, naming suggestions, classification, data extraction, " +
-    "single-function code review, docstrings, email subject lines. " +
-    "For translations to other languages (Spanish, French, Italian, etc.) or specific dialects " +
-    "(Mexican Spanish, Brazilian Portuguese, etc.), use task='freeform' with a custom prompt. " +
-    "Use task='freeform' with a custom prompt for anything else.",
+    "Use for: commit messages, PR descriptions, code summaries, changelog entries, naming suggestions, " +
+    "classification, data extraction, single-function code review, docstrings, email subject lines. " +
+    "task='translate' ONLY handles German↔English. " +
+    "For ALL other languages (Spanish, French, Italian, Portuguese, etc.) including dialects (Mexican Spanish, Brazilian Portuguese), " +
+    "you MUST use task='freeform' with a STRICT prompt: 'Translate to <target language>. Output only the translation. No commentary, no options, no explanations.' " +
+    "Always add 'output only X, no commentary' constraints in freeform prompts to prevent verbose responses.",
   {
     task: z
       .enum([...ALL_TASKS] as [string, ...string[]])
@@ -370,8 +372,8 @@ server.tool(
       recordUsage(response.totalTokens, task);
 
       const warnings = checkWarnings();
-      const tag = `[offloaded via ${MODEL} · ${response.totalTokens} tokens]`;
-      let text = `${tag}\n\n${response.text}`;
+      const footer = `—— Offloaded via ${MODEL} · ${response.totalTokens} tokens · [offload-mcp](https://github.com/peterhadorn/offload-mcp)`;
+      let text = `${response.text}\n\n${footer}`;
       if (warnings.length > 0) {
         text += "\n\n" + warnings.map((w) => `[WARNING] ${w}`).join("\n");
       }
