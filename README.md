@@ -11,13 +11,11 @@ The default model chain uses Gemma because the models are useful, open, and fun 
 
 Get a free API key from <https://aistudio.google.com/apikey>.
 
-No package install is required if your MCP client can run `npx`:
+Choose one install method.
 
-```text
-command: npx
-args: offload-mcp@latest
-env: GOOGLE_AI_API_KEY=your_key
-```
+### Option 1: npx (recommended)
+
+`npx` downloads and runs `offload-mcp@latest` on demand. You do not need to install the package globally. Your MCP client runs this command whenever it starts the server.
 
 JSON-style MCP config:
 
@@ -42,13 +40,50 @@ args = ["offload-mcp@latest"]
 env = { GOOGLE_AI_API_KEY = "your_key" }
 ```
 
-Optional global install:
+To test that npm can resolve the package:
+
+```bash
+npx offload-mcp@latest
+```
+
+That starts an MCP stdio server, so it will wait for an MCP client instead of printing a normal CLI screen.
+
+### Option 2: global npm install
+
+Install once:
 
 ```bash
 npm install -g offload-mcp
 ```
 
-Then use `command: offload-mcp` with no args.
+Then use the binary directly in your MCP config.
+
+JSON-style MCP config:
+
+```json
+{
+  "mcpServers": {
+    "offload-mcp": {
+      "command": "offload-mcp",
+      "env": { "GOOGLE_AI_API_KEY": "your_key" }
+    }
+  }
+}
+```
+
+TOML-style MCP config:
+
+```toml
+[mcp_servers.offload-mcp]
+command = "offload-mcp"
+env = { GOOGLE_AI_API_KEY = "your_key" }
+```
+
+To update a global install later:
+
+```bash
+npm update -g offload-mcp
+```
 
 ## Use
 
