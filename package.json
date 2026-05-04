@@ -9,7 +9,8 @@
   },
   "files": [
     "build",
-    "rules"
+    "rules",
+    "assets"
   ],
   "scripts": {
     "build": "tsc && chmod +x build/index.js",

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { buildPrompt, ALL_TASKS } from "../src/index.js";
+import { buildPrompt, ALL_TASKS, SOURCE_TYPES, loadSourceContent, estimateTokens, MODEL_CHAIN } from "../src/index.js";
 
 // --- Router Tests ---
 
@@ -34,6 +34,21 @@ describe("buildPrompt", () => {
 
   it("freeform throws without prompt", () => {
     expect(() => buildPrompt("freeform", "content")).toThrow("requires a prompt");
+  });
+
+  it("has source types for local input offloading", () => {
+    expect(SOURCE_TYPES.has("git_diff")).toBe(true);
+    expect(SOURCE_TYPES.has("git_staged_diff")).toBe(true);
+    expect(SOURCE_TYPES.has("file")).toBe(true);
+  });
+
+  it("estimates tokens from content length", () => {
+    expect(estimateTokens("12345678")).toBe(2);
+    expect(estimateTokens("")).toBe(0);
+  });
+
+  it("uses a configurable model chain with fallback by default", () => {
+    expect(MODEL_CHAIN).toEqual(["gemma-4-31b-it", "gemma-3-27b-it"]);
   });
 });
 
@@ -70,14 +85,15 @@ describe("tracker (isolated via env)", () => {
   it("reserveCall + recordUsage tracks calls, tokens, and tasks", async () => {
     const { reserveCall, recordUsage, todayCalls, getStatus } = await loadTracker();
     expect(reserveCall()).toBe(true);
-    recordUsage(500, "commit_message");
+    recordUsage(500, "commit_message", 250);
     expect(reserveCall()).toBe(true);
     recordUsage(300, "translate");
 
     expect(todayCalls()).toBe(2);
     const status = getStatus();
     expect(status).toContain("2/1500");
-    expect(status).toContain("800 tokens offloaded");
+    expect(status).toContain("800 model tokens processed");
+    expect(status).toContain("today ~250 tokens");
     expect(status).toContain("commit_message: 1");
     expect(status).toContain("translate: 1");
   });
@@ -121,7 +137,7 @@ describe("tracker (isolated via env)", () => {
     mod2.seedFromFile();
     expect(mod2.todayCalls()).toBe(2);
     const status = mod2.getStatus();
-    expect(status).toContain("800 tokens offloaded");
+    expect(status).toContain("800 model tokens processed");
     expect(status).toContain("commit_message: 1");
   });
 
@@ -133,8 +149,8 @@ describe("tracker (isolated via env)", () => {
     const today = todayKey();
 
     saveUsage({
-      [oldKey]: { calls: 5, tokens: 500, tasks: {} },
-      [today]: { calls: 1, tokens: 100, tasks: {} },
+      [oldKey]: { calls: 5, tokens: 500, savedTokens: 0, tasks: {} },
+      [today]: { calls: 1, tokens: 100, savedTokens: 0, tasks: {} },
     });
     pruneOldEntries();
 
@@ -178,7 +194,7 @@ describe("tracker (isolated via env)", () => {
     mod.recordUsage(500, "commit_message");
     const status = mod.getStatus();
     expect(status).toContain("1/1500");
-    expect(status).toContain("500 tokens offloaded");
+    expect(status).toContain("500 model tokens processed");
     expect(status).toContain("commit_message: 1");
   });
 
@@ -192,5 +208,27 @@ describe("tracker (isolated via env)", () => {
     const { pruneOldEntries } = await loadTracker();
     pruneOldEntries();
     expect(existsSync(join(tmpDir, "usage.json"))).toBe(false);
+  });
+});
+
+describe("source loader", () => {
+  let tmpDir: string;
+
+  beforeEach(() => {
+    tmpDir = join(tmpdir(), `offload-source-test-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+    mkdirSync(tmpDir, { recursive: true });
+  });
+
+  afterEach(() => {
+    if (existsSync(tmpDir)) rmSync(tmpDir, { recursive: true });
+  });
+
+  it("loads file content relative to cwd", () => {
+    writeFileSync(join(tmpDir, "notes.txt"), "hello from a file");
+    expect(loadSourceContent("file", "notes.txt", tmpDir)).toBe("hello from a file");
+  });
+
+  it("throws when file source has no path", () => {
+    expect(() => loadSourceContent("file", undefined, tmpDir)).toThrow("requires a path");
   });
 });

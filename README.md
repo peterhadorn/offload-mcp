@@ -3,116 +3,26 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![GitHub release](https://img.shields.io/github/v/release/peterhadorn/offload-mcp?display_name=tag&sort=semver)](https://github.com/peterhadorn/offload-mcp/releases)
 
-**Offload routine text/code tasks from your AI coding assistant to Google's free Gemma 4 API.**
+**Offload routine coding-assistant tasks to lower-cost models through MCP.**
 
-Tell Claude (or Cursor / Cline / Codex / Windsurf) `"offload this translation"`, `"offload a commit message for this diff"`, or `"use offload to summarize this code"` — your AI calls Gemma, you save tokens, the result comes back tagged with the model and token count.
+The default config uses the Gemma family because those models are useful, open, and genuinely fun to experiment with. Running them locally can be expensive in RAM, GPU, and setup time; the Google GenAI API makes them easy to use for small routine jobs at almost no cost. You can point the server at any supported model ID.
+
+offload-mcp gives any MCP-aware assistant two tools:
+
+- `offload` sends pasted text to the configured model.
+- `offload_source` lets the MCP server read local diffs or files directly, so the assistant can avoid loading that input into its own context first.
 
 ![offload-mcp demo](assets/demo.gif)
-
-Translations, commit messages, docstrings, code summaries, data extraction — or anything via freeform prompts. Free Gemma 4 endpoint (1,500 calls/day). Works with every MCP-aware AI tool. Zero cost, zero setup.
 
 ## Quick Start
 
 ```bash
-# 1. Get a free API key (no credit card)
-#    → https://aistudio.google.com/apikey
-
-# 2. Add to Claude Code
-claude mcp add offload-mcp -e GOOGLE_AI_API_KEY=your_key -- npx offload-mcp
+# Get a free API key:
+# https://aistudio.google.com/apikey
 ```
 
-That's it. Next session, you can ask your AI to offload anything routine to Gemma.
+JSON-style MCP config:
 
-## Usage
-
-**Primary path — invoke explicitly.** Tell your AI to offload, and it will:
-
-```
-You: offload this translation to mexican spanish: <paste German text>
-AI:  Aquí tienes algunos abogados recomendados en Bern...
-     [offloaded via gemma-4-31b-it · 2320 tokens]
-
-You: offload a commit message for the current diff
-AI:  feat(auth): add JWT token validation
-     [offloaded via gemma-4-31b-it · 307 tokens]
-
-You: use offload to give me 5 cold-email subjects for a Postgres backup tool
-AI:  1. Stop losing sleep over Postgres backups
-     2. ...
-     [offloaded via gemma-4-31b-it · 412 tokens]
-```
-
-The tag tells you which model handled it and how many tokens stayed off your primary model's context.
-
-**Bonus path — auto-routing.** The server ships routing rules via the MCP `instructions` field. For tasks like commit messages or translations, your AI *may* route to Gemma automatically without you asking. Reliability varies by client and prompt — for guarantees, invoke explicitly.
-
-## What It Does
-
-Your AI assistant calls `offload(task, content)` → offload-mcp sends it to Google's free Gemma 4 31B API → result comes back with a tag:
-
-```
-feat(auth): add JWT token validation
-
-[offloaded via gemma-4-31b-it · 63 tokens]
-```
-
-### Built-in Tasks
-
-| Task | Example |
-|------|---------|
-| `commit_message` | Generate conventional commit from a diff |
-| `pr_description` | PR summary with bullets and file list |
-| `code_summary` | 2-3 sentence summary of what code does |
-| `translate` | Translate text, preserving formatting and tone |
-| `changelog_entry` | Changelog line per logical change |
-| `naming_suggestion` | 3 name options for a variable, function, or class |
-| `classify` | Classify text into categories |
-| `extract_data` | Pull structured data from unstructured text |
-| `code_review_single` | Review a single function for bugs |
-| `docstring` | Docstring with params, returns, throws |
-| `subject_lines` | 5 email subject line variants |
-
-### Freeform
-
-For anything not listed above, use `task="freeform"` with a custom prompt:
-
-```
-offload(task="freeform", content="ECONNREFUSED 10.0.1.5:5432", prompt="Rewrite as a user-friendly error message")
-```
-
-Rewrite error messages, summarize logs, format data, extract action items, generate regex — anything a smaller model handles fine.
-
-## Tools
-
-### `offload`
-
-| Parameter | Type | Description |
-|-----------|------|-------------|
-| `task` | enum | Built-in task name or `freeform` |
-| `content` | string | The text to process |
-| `prompt` | string (optional) | Custom instruction — required for `freeform` |
-
-### `offload_status`
-
-No parameters. Returns usage stats:
-
-```
-Today: 47/1500 calls (3.1%), 28,500 tokens offloaded
-Month: 312 calls over 8 days (avg 39/day), 187,400 tokens offloaded
-Tasks today:
-  commit_message: 18
-  docstring: 12
-  code_summary: 9
-```
-
-## Client Setup
-
-**Claude Code**
-```bash
-claude mcp add offload-mcp -e GOOGLE_AI_API_KEY=your_key -- npx offload-mcp
-```
-
-**Cursor** — add to `.cursor/mcp.json`:
 ```json
 {
   "mcpServers": {
@@ -125,51 +35,104 @@ claude mcp add offload-mcp -e GOOGLE_AI_API_KEY=your_key -- npx offload-mcp
 }
 ```
 
-**Windsurf** — same JSON block in `~/.codeium/windsurf/mcp_config.json`.
+TOML-style MCP config:
 
-**Cline** — MCP Servers → Add → command: `npx offload-mcp`, env: `GOOGLE_AI_API_KEY`.
+```toml
+[mcp_servers.offload-mcp]
+command = "npx"
+args = ["offload-mcp"]
+env = { GOOGLE_AI_API_KEY = "your_key" }
+```
 
-**Codex** — add `npx offload-mcp` to your MCP config.
+## Usage
 
-> **Optional fallback:** clients that don't auto-load MCP `instructions` won't see the routing rules. In that case, copy the matching file from [`rules/`](https://github.com/peterhadorn/offload-mcp/tree/main/rules) into the client's rules location (e.g. `~/.claude/rules/offload.md`, `.cursorrules`, `AGENTS.md`).
+Ask your assistant to offload routine work:
+
+```text
+offload a commit message for the current diff
+offload this translation to Mexican Spanish: <text>
+use offload to summarize src/index.ts
+```
+
+For local repo input, `offload_source` is the useful path:
+
+```text
+offload_source(task="commit_message", source="git_diff")
+offload_source(task="pr_description", source="git_staged_diff")
+offload_source(task="code_summary", source="file", path="src/index.ts")
+```
+
+Example footer:
+
+```text
+—— Offloaded via gemma-4-31b-it · 307 model tokens · ~1,420 primary input tokens avoided · offload-mcp
+```
+
+`model tokens` come from the API response. `primary input tokens avoided` is an estimate based on local source size and only appears for `offload_source`.
+
+## Tasks
+
+Built-in task names:
+
+```text
+commit_message
+pr_description
+code_summary
+translate
+changelog_entry
+naming_suggestion
+classify
+extract_data
+code_review_single
+docstring
+subject_lines
+freeform
+```
+
+Use `freeform` with a custom prompt for anything else:
+
+```text
+offload(task="freeform", content="ECONNREFUSED 10.0.1.5:5432", prompt="Rewrite as a user-friendly error message. Output only the message.")
+```
+
+## Status
+
+`offload_status` shows usage and estimated saved input context:
+
+```text
+Today: 47/1500 calls (3.1%), 28,500 model tokens processed
+Month: 312 calls over 8 days (avg 39/day), 187,400 model tokens processed
+Estimated primary input avoided: today ~12,800 tokens, month ~74,200 tokens
+Tasks today:
+  commit_message: 18
+  docstring: 12
+  code_summary: 9
+```
 
 ## Configuration
 
 | Env var | Default | Description |
 |---------|---------|-------------|
-| `GOOGLE_AI_API_KEY` | — | **Required.** Free key from [aistudio.google.com](https://aistudio.google.com/apikey) |
-| `OFFLOAD_MODEL` | `gemma-4-31b-it` | Model to use |
+| `GOOGLE_AI_API_KEY` | - | Required. Free key from AI Studio |
+| `OFFLOAD_MODEL` | `gemma-4-31b-it` | Preferred model |
+| `OFFLOAD_FALLBACK_MODELS` | `gemma-3-27b-it` | Comma-separated fallback models |
+| `OFFLOAD_TIMEOUT_MS` | `20000` | Per-model request timeout |
+| `OFFLOAD_RETRIES_PER_MODEL` | `1` | Attempts before trying the next model |
 | `OFFLOAD_RPD_LIMIT` | `1500` | Max requests per day |
-| `OFFLOAD_LOG_PATH` | `~/.offload-mcp/usage.json` | Usage data location |
+| `OFFLOAD_LOG_PATH` | `~/.offload-mcp/usage.json` | Local usage stats |
 
-## How It Works
+By default, requests try `gemma-4-31b-it` first and fall back to `gemma-3-27b-it` on timeouts, rate limits, and transient server errors. This is just the default chain; set `OFFLOAD_MODEL` and `OFFLOAD_FALLBACK_MODELS` to use different model IDs. Set `OFFLOAD_FALLBACK_MODELS=` to disable fallback.
 
-```
-You: "offload this translation: <text>"
-  → Your AI calls offload(task="translate", content=<text>)
-    → Gemma 4 API (free, 1500 req/day)
-      → "Aquí tienes... [offloaded via gemma-4-31b-it · 2320 tokens]"
-        → Your AI relays the result, those 2320 tokens stayed off your primary model's context
-```
+## Data
 
-Quota enforced in-memory (survives I/O failures). File persistence is best-effort for cross-restart continuity. Warnings at 50/75/90%, hard stop at the limit — falls back to your primary AI silently.
-
-No GPU needed. No Docker. No Ollama. Just `npx`.
+offload-mcp sends task content to the configured Google GenAI model. Do not offload secrets, private customer data, proprietary code, or regulated data unless your policy allows it. offload-mcp stores local usage stats only; it does not store task content.
 
 ## Development
 
 ```bash
-git clone https://github.com/peterhadorn/offload-mcp
-cd offload-mcp
 npm install
-npm test      # 19 tests
+npm test
 npm run build
 ```
 
-## License
-
 MIT
-
----
-
-If offload-mcp saves you tokens (or money), star the repo — it's the only signal I have that this is useful to someone besides me. → [github.com/peterhadorn/offload-mcp](https://github.com/peterhadorn/offload-mcp)
