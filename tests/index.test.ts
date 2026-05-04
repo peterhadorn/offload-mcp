@@ -198,6 +198,12 @@ describe("tracker (isolated via env)", () => {
     expect(status).toContain("commit_message: 1");
   });
 
+  it("getStatus always shows estimated avoided input", async () => {
+    const mod = await loadTracker();
+    const status = mod.getStatus();
+    expect(status).toContain("Estimated primary input avoided: today ~0 tokens, month ~0 tokens");
+  });
+
   it("recordUsage survives unwritable path", async () => {
     vi.stubEnv("OFFLOAD_LOG_PATH", "/nonexistent/deeply/nested/path/usage.json");
     const mod = await loadTracker();

@@ -378,10 +378,8 @@ function getStatus(): string {
   const lines = [
     `Today: ${mem.calls}/${RPD_LIMIT} calls (${pct}%), ${mem.tokens.toLocaleString()} model tokens processed`,
     `Month: ${mCalls} calls over ${mDays} days (avg ${avgPerDay}/day), ${mTokens.toLocaleString()} model tokens processed`,
+    `Estimated primary input avoided: today ~${mem.savedTokens.toLocaleString()} tokens, month ~${mSavedTokens.toLocaleString()} tokens`,
   ];
-  if (mem.savedTokens > 0 || mSavedTokens > 0) {
-    lines.push(`Estimated primary input avoided: today ~${mem.savedTokens.toLocaleString()} tokens, month ~${mSavedTokens.toLocaleString()} tokens`);
-  }
 
   const tasks = Object.entries(mem.tasks).sort((a, b) => b[1] - a[1]);
   if (tasks.length > 0) {
