@@ -5,7 +5,7 @@
 
 **MCP server for offloading routine coding-assistant work to a cheaper model.**
 
-The default model chain uses Gemma because the models are useful, open, and fun to experiment with. Running them locally can be heavy on RAM, GPU, and setup; the Gemini API (Google AI Studio) makes them easy to use for small routine tasks at almost no cost. You can use any supported model ID.
+The default model chain uses Gemma because the models are useful, open, and fun to experiment with. Running them locally can be heavy on RAM, GPU, and setup; the Gemini API (key from Google AI Studio) makes them easy to use for small routine tasks at almost no cost. You can use any supported model ID.
 
 ## Install
 
@@ -106,7 +106,7 @@ offload_source(task="code_summary", source="file", path="src/index.ts")
 Footer example:
 
 ```text
-—— Offloaded via gemma-4-31b-it · 307 model tokens · ~1,420 primary input tokens avoided · offload-mcp
+—— Offloaded via gemma-4-31b-it · 307 model tokens · ~1,420 primary input tokens avoided · [offload-mcp](https://github.com/peterhadorn/offload-mcp)
 ```
 
 `model tokens` come from the API response. `primary input tokens avoided` is an estimate and only appears when using `offload_source`.
@@ -156,13 +156,13 @@ Stats are stored locally at `~/.offload-mcp/usage.json` by default. Only counter
 |---------|---------|-------------|
 | `GOOGLE_AI_API_KEY` | - | Required |
 | `OFFLOAD_MODEL` | `gemma-4-31b-it` | Preferred model |
-| `OFFLOAD_FALLBACK_MODELS` | `gemma-3-27b-it` | Comma-separated fallback models |
+| `OFFLOAD_FALLBACK_MODELS` | `gemma-4-26b-a4b-it` | Comma-separated fallback models |
 | `OFFLOAD_TIMEOUT_MS` | `20000` | Per-model request timeout |
 | `OFFLOAD_RETRIES_PER_MODEL` | `1` | Attempts per model before falling back (1 = no retry) |
 | `OFFLOAD_RPD_LIMIT` | `14400` | Local daily call limit. Lower it if your Gemini API account has a stricter quota. |
 | `OFFLOAD_LOG_PATH` | `~/.offload-mcp/usage.json` | Local usage stats |
 
-By default, requests try `gemma-4-31b-it` first and fall back to `gemma-3-27b-it` on timeouts, rate limits, and transient server errors. Set `OFFLOAD_FALLBACK_MODELS=` to disable fallback.
+By default, requests try `gemma-4-31b-it` first and fall back to `gemma-4-26b-a4b-it` on timeouts, rate limits, and transient server errors. Set `OFFLOAD_FALLBACK_MODELS=` to disable fallback.
 
 ## Data
 

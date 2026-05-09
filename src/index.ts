@@ -24,7 +24,7 @@ const PKG_VERSION: string = (() => {
 
 const API_KEY = process.env.GOOGLE_AI_API_KEY ?? "";
 const MODEL = process.env.OFFLOAD_MODEL ?? "gemma-4-31b-it";
-const FALLBACK_MODELS = (process.env.OFFLOAD_FALLBACK_MODELS ?? "gemma-3-27b-it")
+const FALLBACK_MODELS = (process.env.OFFLOAD_FALLBACK_MODELS ?? "gemma-4-26b-a4b-it")
   .split(",")
   .map((m) => m.trim())
   .filter(Boolean);

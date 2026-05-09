@@ -48,7 +48,7 @@ describe("buildPrompt", () => {
   });
 
   it("uses a configurable model chain with fallback by default", () => {
-    expect(MODEL_CHAIN).toEqual(["gemma-4-31b-it", "gemma-3-27b-it"]);
+    expect(MODEL_CHAIN).toEqual(["gemma-4-31b-it", "gemma-4-26b-a4b-it"]);
   });
 });
 
