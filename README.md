@@ -5,7 +5,7 @@
 
 **MCP server for offloading routine coding-assistant work to a cheaper model.**
 
-The default model chain uses Gemma because the models are useful, open, and fun to experiment with. Running them locally can be heavy on RAM, GPU, and setup; the Google GenAI API makes them easy to use for small routine tasks at almost no cost. You can use any supported model ID.
+The default model chain uses Gemma because the models are useful, open, and fun to experiment with. Running them locally can be heavy on RAM, GPU, and setup; the Gemini API (Google AI Studio) makes them easy to use for small routine tasks at almost no cost. You can use any supported model ID.
 
 ## Install
 
@@ -139,7 +139,7 @@ offload(task="freeform", content="ECONNREFUSED 10.0.1.5:5432", prompt="Rewrite a
 `offload_status` shows local usage counters:
 
 ```text
-Today: 47/1500 calls (3.1%), 28,500 model tokens processed
+Today: 47/14400 calls (0.3%), 28,500 model tokens processed
 Month: 312 calls over 8 days (avg 39/day), 187,400 model tokens processed
 Estimated primary input avoided: today ~12,800 tokens, month ~74,200 tokens
 Tasks today:
@@ -158,14 +158,16 @@ Stats are stored locally at `~/.offload-mcp/usage.json` by default. Only counter
 | `OFFLOAD_MODEL` | `gemma-4-31b-it` | Preferred model |
 | `OFFLOAD_FALLBACK_MODELS` | `gemma-3-27b-it` | Comma-separated fallback models |
 | `OFFLOAD_TIMEOUT_MS` | `20000` | Per-model request timeout |
-| `OFFLOAD_RETRIES_PER_MODEL` | `1` | Attempts before trying the next model |
-| `OFFLOAD_RPD_LIMIT` | `1500` | Local daily call limit |
+| `OFFLOAD_RETRIES_PER_MODEL` | `1` | Attempts per model before falling back (1 = no retry) |
+| `OFFLOAD_RPD_LIMIT` | `14400` | Local daily call limit. Lower it if your Gemini API account has a stricter quota. |
 | `OFFLOAD_LOG_PATH` | `~/.offload-mcp/usage.json` | Local usage stats |
 
 By default, requests try `gemma-4-31b-it` first and fall back to `gemma-3-27b-it` on timeouts, rate limits, and transient server errors. Set `OFFLOAD_FALLBACK_MODELS=` to disable fallback.
 
 ## Data
 
-offload-mcp sends task content to the configured Google GenAI model. Do not offload secrets, private customer data, proprietary code, or regulated data unless your policy allows it.
+offload-mcp sends task content to the configured Gemini API model. Do not offload secrets, private customer data, proprietary code, or regulated data unless your policy allows it.
+
+`offload_source` with `source="file"` reads any file path the MCP server process can access. Treat the `path` and `cwd` parameters as trusted local input from your MCP client.
 
 MIT

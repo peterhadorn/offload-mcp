@@ -10,6 +10,16 @@ import { join, dirname, resolve } from "path";
 import { fileURLToPath } from "url";
 import { execFileSync } from "child_process";
 
+const PKG_VERSION: string = (() => {
+  try {
+    const pkgPath = new URL("../package.json", import.meta.url);
+    const pkg = JSON.parse(readFileSync(pkgPath, "utf-8")) as { version?: string };
+    return pkg.version ?? "0.0.0";
+  } catch {
+    return "0.0.0";
+  }
+})();
+
 // --- Config ---
 
 const API_KEY = process.env.GOOGLE_AI_API_KEY ?? "";
@@ -20,8 +30,8 @@ const FALLBACK_MODELS = (process.env.OFFLOAD_FALLBACK_MODELS ?? "gemma-3-27b-it"
   .filter(Boolean);
 const MODEL_CHAIN = [MODEL, ...FALLBACK_MODELS].filter((model, index, models) => models.indexOf(model) === index);
 const RPD_LIMIT = (() => {
-  const raw = parseInt(process.env.OFFLOAD_RPD_LIMIT ?? "1500", 10);
-  return Number.isFinite(raw) && raw > 0 ? raw : 1500;
+  const raw = parseInt(process.env.OFFLOAD_RPD_LIMIT ?? "14400", 10);
+  return Number.isFinite(raw) && raw > 0 ? raw : 14400;
 })();
 const REQUEST_TIMEOUT_MS = (() => {
   const raw = parseInt(process.env.OFFLOAD_TIMEOUT_MS ?? "20000", 10);
@@ -137,9 +147,15 @@ function isFallbackEligible(err: any): boolean {
   return isTimeout(err) || status === 408 || status === 429 || (typeof status === "number" && status >= 500);
 }
 
+function redactSecrets(text: string): string {
+  return text
+    .replace(/key=[^&\s]+/gi, "key=REDACTED")
+    .replace(/x-goog-api-key:\s*[^\s,]+/gi, "x-goog-api-key: REDACTED")
+    .replace(/Bearer\s+[^\s]+/gi, "Bearer REDACTED");
+}
+
 function formatModelError(model: string, err: any): string {
-  const msg = (err?.message ?? String(err)).replace(/key=[^&\s]+/gi, "key=REDACTED");
-  return `${model}: ${msg}`;
+  return `${model}: ${redactSecrets(err?.message ?? String(err))}`;
 }
 
 async function generateWithModel(model: string, prompt: string): Promise<OffloadResponse> {
@@ -420,14 +436,63 @@ Quota: check \`offload_status\` if you see a quota warning. If quota is exceeded
 const server = new McpServer(
   {
     name: "offload-mcp",
-    version: "0.1.3",
+    version: PKG_VERSION,
   },
   { instructions: INSTRUCTIONS }
 );
 
+type ToolResult = { content: Array<{ type: "text"; text: string }> };
+
+function textResult(text: string): ToolResult {
+  return { content: [{ type: "text" as const, text }] };
+}
+
+async function executeOffload(opts: {
+  task: string;
+  content: string;
+  customPrompt?: string;
+  savedTokens: number;
+}): Promise<ToolResult> {
+  const { task, content, customPrompt, savedTokens } = opts;
+
+  if (!API_KEY) {
+    return textResult("[ERROR] GOOGLE_AI_API_KEY not set. Get a free key at https://aistudio.google.com/apikey");
+  }
+
+  if (task === "freeform" && !customPrompt) {
+    return textResult("[ERROR] task='freeform' requires a prompt parameter.");
+  }
+
+  if (!reserveCall()) {
+    return textResult(`[QUOTA] Daily limit reached (${RPD_LIMIT} calls). Handle locally.`);
+  }
+
+  try {
+    const prompt = buildPrompt(task, content, customPrompt);
+    const response = await callOffloadModel(prompt);
+
+    recordUsage(response.totalTokens, task, savedTokens);
+
+    const warnings = checkWarnings();
+    const avoidedClause =
+      savedTokens > 0 ? ` · ~${savedTokens.toLocaleString()} primary input tokens avoided` : "";
+    const footer = `—— Offloaded via ${response.model} · ${response.totalTokens} model tokens${avoidedClause} · [offload-mcp](https://github.com/peterhadorn/offload-mcp)`;
+    let text = `${response.text}\n\n${footer}`;
+    if (warnings.length > 0) {
+      text += "\n\n" + warnings.map((w) => `[WARNING] ${w}`).join("\n");
+    }
+
+    return textResult(text);
+  } catch (err: any) {
+    releaseCall();
+    const msg = redactSecrets(err?.message ?? String(err));
+    return textResult(`[ERROR] Offload API call failed: ${msg}`);
+  }
+}
+
 server.tool(
   "offload",
-  "Offload a routine task to the configured Google GenAI model. " +
+  "Offload a routine task to the configured Gemini API model. " +
     "Use for: commit messages, PR descriptions, code summaries, changelog entries, naming suggestions, " +
     "classification, data extraction, single-function code review, docstrings, email subject lines. " +
     "task='translate' handles explicit target-language hints in the content, including dialects. " +
@@ -441,55 +506,7 @@ server.tool(
     prompt: z.string().optional().describe("Custom instruction for freeform tasks. Required when task='freeform', ignored otherwise."),
   },
   async ({ task, content, prompt: customPrompt }) => {
-    if (!API_KEY) {
-      return {
-        content: [
-          {
-            type: "text" as const,
-            text: "[ERROR] GOOGLE_AI_API_KEY not set. Get a free key at https://aistudio.google.com/apikey",
-          },
-        ],
-      };
-    }
-
-    if (task === "freeform" && !customPrompt) {
-      return {
-        content: [{ type: "text" as const, text: "[ERROR] task='freeform' requires a prompt parameter." }],
-      };
-    }
-
-    if (!reserveCall()) {
-      return {
-        content: [{ type: "text" as const, text: `[QUOTA] Daily limit reached (${RPD_LIMIT} calls). Handle locally.` }],
-      };
-    }
-
-    try {
-      const prompt = buildPrompt(task, content, customPrompt);
-      const response = await callOffloadModel(prompt);
-
-      recordUsage(response.totalTokens, task);
-
-      const warnings = checkWarnings();
-      const footer = `—— Offloaded via ${response.model} · ${response.totalTokens} model tokens · [offload-mcp](https://github.com/peterhadorn/offload-mcp)`;
-      let text = `${response.text}\n\n${footer}`;
-      if (warnings.length > 0) {
-        text += "\n\n" + warnings.map((w) => `[WARNING] ${w}`).join("\n");
-      }
-
-      return { content: [{ type: "text" as const, text }] };
-    } catch (err: any) {
-      releaseCall();
-      const msg = (err?.message ?? String(err)).replace(/key=[^&\s]+/gi, "key=REDACTED");
-      return {
-        content: [
-          {
-            type: "text" as const,
-            text: `[ERROR] Offload API call failed: ${msg}`,
-          },
-        ],
-      };
-    }
+    return executeOffload({ task, content, customPrompt, savedTokens: 0 });
   }
 );
 
@@ -498,7 +515,7 @@ server.tool(
   "Offload a routine task using local source content fetched by the MCP server. " +
     "This saves primary-agent input context for local diffs and files because the assistant passes a small source reference instead of the full text. " +
     "Sources: git_diff (working tree changes vs HEAD), git_staged_diff (staged changes), file (requires path). " +
-    "Use only for non-sensitive content you are allowed to send to the configured Google GenAI model.",
+    "Use only for non-sensitive content you are allowed to send to the configured Gemini API model.",
   {
     task: z
       .enum([...ALL_TASKS] as [string, ...string[]])
@@ -511,68 +528,22 @@ server.tool(
     prompt: z.string().optional().describe("Custom instruction for freeform tasks. Required when task='freeform', ignored otherwise."),
   },
   async ({ task, source, path, cwd, prompt: customPrompt }) => {
+    if (!API_KEY) {
+      return textResult("[ERROR] GOOGLE_AI_API_KEY not set. Get a free key at https://aistudio.google.com/apikey");
+    }
+
     let content: string;
     try {
       content = loadSourceContent(source, path, cwd);
     } catch (err: any) {
-      const msg = err?.message ?? String(err);
-      return { content: [{ type: "text" as const, text: `[ERROR] Failed to load source: ${msg}` }] };
+      return textResult(`[ERROR] Failed to load source: ${err?.message ?? String(err)}`);
     }
 
     if (content.trim().length === 0) {
-      return { content: [{ type: "text" as const, text: `[ERROR] Source '${source}' is empty.` }] };
+      return textResult(`[ERROR] Source '${source}' is empty.`);
     }
 
-    if (!API_KEY) {
-      return {
-        content: [
-          {
-            type: "text" as const,
-            text: "[ERROR] GOOGLE_AI_API_KEY not set. Get a free key at https://aistudio.google.com/apikey",
-          },
-        ],
-      };
-    }
-
-    if (task === "freeform" && !customPrompt) {
-      return {
-        content: [{ type: "text" as const, text: "[ERROR] task='freeform' requires a prompt parameter." }],
-      };
-    }
-
-    if (!reserveCall()) {
-      return {
-        content: [{ type: "text" as const, text: `[QUOTA] Daily limit reached (${RPD_LIMIT} calls). Handle locally.` }],
-      };
-    }
-
-    try {
-      const prompt = buildPrompt(task, content, customPrompt);
-      const response = await callOffloadModel(prompt);
-
-      const savedTokens = estimateTokens(content);
-      recordUsage(response.totalTokens, task, savedTokens);
-
-      const warnings = checkWarnings();
-      const footer = `—— Offloaded via ${response.model} · ${response.totalTokens} model tokens · ~${savedTokens.toLocaleString()} primary input tokens avoided · [offload-mcp](https://github.com/peterhadorn/offload-mcp)`;
-      let text = `${response.text}\n\n${footer}`;
-      if (warnings.length > 0) {
-        text += "\n\n" + warnings.map((w) => `[WARNING] ${w}`).join("\n");
-      }
-
-      return { content: [{ type: "text" as const, text }] };
-    } catch (err: any) {
-      releaseCall();
-      const msg = (err?.message ?? String(err)).replace(/key=[^&\s]+/gi, "key=REDACTED");
-      return {
-        content: [
-          {
-            type: "text" as const,
-            text: `[ERROR] Offload API call failed: ${msg}`,
-          },
-        ],
-      };
-    }
+    return executeOffload({ task, content, customPrompt, savedTokens: estimateTokens(content) });
   }
 );
 

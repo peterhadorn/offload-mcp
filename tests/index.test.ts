@@ -91,7 +91,7 @@ describe("tracker (isolated via env)", () => {
 
     expect(todayCalls()).toBe(2);
     const status = getStatus();
-    expect(status).toContain("2/1500");
+    expect(status).toContain("2/14400");
     expect(status).toContain("800 model tokens processed");
     expect(status).toContain("today ~250 tokens");
     expect(status).toContain("commit_message: 1");
@@ -193,7 +193,7 @@ describe("tracker (isolated via env)", () => {
     mod.reserveCall();
     mod.recordUsage(500, "commit_message");
     const status = mod.getStatus();
-    expect(status).toContain("1/1500");
+    expect(status).toContain("1/14400");
     expect(status).toContain("500 model tokens processed");
     expect(status).toContain("commit_message: 1");
   });

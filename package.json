@@ -1,6 +1,6 @@
 {
   "name": "offload-mcp",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "MCP server that offloads routine AI coding tasks to free LLM APIs",
   "type": "module",
   "main": "build/index.js",
@@ -22,9 +22,12 @@
     "llm",
     "offload",
     "gemma",
+    "gemini-api",
     "claude",
     "cursor",
-    "free-api"
+    "free-api",
+    "cost-savings",
+    "token-savings"
   ],
   "author": "Peter Hadorn",
   "license": "MIT",

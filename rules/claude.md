@@ -42,7 +42,7 @@ Handle these yourself:
 - Complex debugging
 - Anything requiring the offload model to call tools or inspect live project state beyond the provided source
 - Security-sensitive reviews
-- Secrets, private customer data, proprietary code, or regulated data unless policy allows sending it to Google GenAI API
+- Secrets, private customer data, proprietary code, or regulated data unless policy allows sending it to the Gemini API
 - Plan writing or execution
 
 ## Quota
